@@ -1,0 +1,3 @@
+python-dotenv
+pyodbc
+google-cloud-storage

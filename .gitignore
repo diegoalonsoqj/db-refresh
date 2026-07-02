@@ -1,0 +1,27 @@
+node_modules/
+dist/
+build/
+
+# Secretos — nunca commitear
+.env
+.env.*
+!.env.example
+**/Keys/
+secrets/
+**/secrets/
+*.key.json
+*-key.json
+*-sa.json
+gcp-sa*.json
+*serviceaccount*.json
+*.pem
+
+# Logs
+*.log
+Logs/
+server/logs/
+
+# Runtime
+.DS_Store
+coverage/
+.vite/
