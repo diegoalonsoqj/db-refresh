@@ -1,18 +1,109 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import ChangePasswordModal from './ChangePasswordModal.jsx';
 import {
   IconHistory, IconLaunch, IconSchedule, IconCatalog, IconUsers,
-  IconAudit, IconSettings, IconServer, IconUser, IconKey, IconLogout,
+  IconAudit, IconSettings, IconServer, IconKey, IconLogout,
+  IconChevronLeft, IconChevronDown,
 } from './icons.jsx';
 
-export default function Layout() {
+const COLLAPSE_KEY = 'dbrefresh.sidebarCollapsed';
+
+const ROLE_LABEL = {
+  admin: 'Administrador',
+  operator: 'Operador',
+  viewer: 'Solo lectura',
+};
+
+/** Iniciales para el avatar por defecto. */
+function initialsOf(name) {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/** Menú de usuario del header: avatar + nombre/rol, despliega contraseña y salir. */
+function UserMenu({ onChangePassword }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  // Un menú abierto tiene que cerrarse al clickear afuera o con Escape; si no,
+  // queda flotando sobre el contenido.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointer = (e) => {
+      if (!ref.current?.contains(e.target)) setOpen(false);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  if (!user) return null;
+
+  const name = user.full_name || user.email;
+
+  const doLogout = async () => {
+    await logout();
+    navigate('/login', { replace: true });
+  };
+
+  return (
+    <div className="user-menu" ref={ref}>
+      <button
+        type="button"
+        className="user-trigger"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <span className="avatar">{initialsOf(name)}</span>
+        <span className="user-id">
+          <strong>{name}</strong>
+          <small>{ROLE_LABEL[user.role] ?? user.role}</small>
+        </span>
+        <span className={`chevron ${open ? 'up' : ''}`}><IconChevronDown /></span>
+      </button>
+
+      {open && (
+        <div className="dropdown" role="menu">
+          <div className="dropdown-head">
+            <strong>{name}</strong>
+            <small>{user.email}</small>
+          </div>
+          <button
+            type="button"
+            role="menuitem"
+            className="dropdown-item"
+            onClick={() => { setOpen(false); onChangePassword(); }}
+          >
+            <IconKey />
+            Cambiar contraseña
+          </button>
+          <button type="button" role="menuitem" className="dropdown-item danger" onClick={doLogout}>
+            <IconLogout />
+            Cerrar sesión
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function Layout() {
+  const { user } = useAuth();
   const [showPwd, setShowPwd] = useState(false);
-  // Siempre arranca colapsado (se puede expandir en la sesión, pero no se recuerda).
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1');
 
   const canLaunch = user && ['operator', 'admin'].includes(user.role);
   const isAdmin = user?.role === 'admin';
@@ -27,9 +118,12 @@ export default function Layout() {
     { to: '/settings', label: 'Ajustes', Icon: IconSettings, show: isAdmin },
   ].filter((i) => i.show);
 
-  const doLogout = async () => {
-    await logout();
-    navigate('/login');
+  const toggleSidebar = () => {
+    setCollapsed((c) => {
+      const next = !c;
+      localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0');
+      return next;
+    });
   };
 
   return (
@@ -40,14 +134,6 @@ export default function Layout() {
             <span className="nav-icon"><IconServer /></span>
             <span className="brand-text">db-refresh</span>
           </div>
-          <button
-            className="collapse-btn"
-            onClick={() => setCollapsed((c) => !c)}
-            aria-label={collapsed ? 'Expandir menú' : 'Colapsar menú'}
-            data-tooltip={collapsed ? 'Expandir' : 'Colapsar'}
-          >
-            {collapsed ? '»' : '«'}
-          </button>
         </div>
 
         <nav className="nav">
@@ -59,28 +145,30 @@ export default function Layout() {
           ))}
         </nav>
 
-        <div className="sidebar-foot">
-          <div className="userinfo" data-tooltip={`${user?.email} · ${user?.role}`}>
-            <span className="nav-icon"><IconUser /></span>
-            <span className="nav-label user-meta">
-              <span className="user-email">{user?.email}</span>
-              <span className="role">{user?.role}</span>
-            </span>
-          </div>
-          <button className="foot-btn" onClick={() => setShowPwd(true)} aria-label="Cambiar contraseña" data-tooltip="Cambiar contraseña">
-            <span className="nav-icon"><IconKey /></span>
-            <span className="nav-label">Contraseña</span>
-          </button>
-          <button className="foot-btn" onClick={doLogout} aria-label="Cerrar sesión" data-tooltip="Cerrar sesión">
-            <span className="nav-icon"><IconLogout /></span>
-            <span className="nav-label">Salir</span>
-          </button>
-        </div>
+        {/* Botón circular montado a caballo del borde derecho: la mitad queda fuera
+            del sidebar (mismo patrón que db-keeper / db-profiler). */}
+        <button
+          type="button"
+          className="sidebar-toggle"
+          onClick={toggleSidebar}
+          title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+          aria-label={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+        >
+          <IconChevronLeft />
+        </button>
       </aside>
 
-      <main className="content">
-        <Outlet />
-      </main>
+      <div className="content">
+        <header className="app-header">
+          <div className="header-right">
+            <UserMenu onChangePassword={() => setShowPwd(true)} />
+          </div>
+        </header>
+
+        <main className="app-main">
+          <Outlet />
+        </main>
+      </div>
 
       {showPwd && <ChangePasswordModal onClose={() => setShowPwd(false)} />}
     </div>
