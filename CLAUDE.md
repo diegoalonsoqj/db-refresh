@@ -50,6 +50,7 @@ Tablas: `gcp_projects`, `gcp_instances`, `gcp_buckets`, `instance_buckets` (N:N)
 
 ## Módulo de settings (runtime, configurable por API)
 AD/LDAP y la service account de GCP ya NO dependen de `.env` fijo: se configuran en caliente y se guardan en `app_settings` (secreto cifrado AES-256-GCM con `APP_ENCRYPTION_KEY`, que sigue en env/Secret Manager). `.env` (`AD_*`, `GOOGLE_APPLICATION_CREDENTIALS`) queda como fallback. Los clientes GCP se construyen bajo demanda y se invalidan al guardar (`server/gcp/state.js` epoch). Rutas: `GET/PUT /api/settings/{ad,gcp}` + `POST .../{ad,gcp}/test`, **protegidas con `authenticate` + `requireRole('admin')`**.
+`GET /api/health` (público) devuelve `{ok, db, dbLatencyMs, version, env, uptimeSecs, now}`: alimenta la sección **Sistema** de Ajustes (solo lectura). Si la BD cae responde igual con `db:false`.
 
 ## Auth (implementada — híbrida local + AD)
 JWT en **cookie httpOnly** (`session`, SameSite=Strict, Secure en prod), TTL = `JWT_EXPIRES_IN`. **Login híbrido** (`POST /api/auth/login` con `source: local|ad`):
@@ -77,7 +78,13 @@ Comparten base `server/engines/sqldump/SqlDumpAdapter.js`; `PostgresAdapter`/`My
 
 ## Frontend (Fase 4)
 `web/` React 18 + Vite 6, CSS propio (sin framework), `react-router-dom`. Dev: `npm --prefix web run dev` (:5173, proxya `/api`→:5000 para cookie same-origin). Base: `api/client.js` (fetch `credentials:'include'`), `auth/` (AuthContext + `RequireAuth` guard por rol), `hooks/useList.js`, `components/` (Layout, StatusBadge, Modal). Backend: añadido `GET /api/restores` (listar jobs).
-**Pantallas:** Login; Historial (`/jobs`); Detalle (`/jobs/:id`, items + log SSE en vivo); Lanzar restore (`/launch`, operator+). **UI admin:** Programadas (`/schedules`, operator+: CRUD + editor de mapping + ejecutar-ya); Catálogo (`/catalog`, admin: tabs Proyectos/Instancias/Buckets con CRUD + modal de vínculo N:N instancia-bucket con default); Ajustes (`/settings`, admin: form AD + subir/pegar JSON de SA GCP, ambos con "probar conexión"). Nav condicionada por rol.
+**Pantallas:** Login; Historial (`/jobs`); Detalle (`/jobs/:id`, items + log SSE en vivo); Lanzar restore (`/launch`, operator+). **UI admin:** Programadas (`/schedules`, operator+: CRUD + editor de mapping + ejecutar-ya); Catálogo (`/catalog`, admin: tabs Proyectos/Instancias/Buckets con CRUD + modal de vínculo N:N instancia-bucket con default); Ajustes (`/settings`, admin). Nav condicionada por rol.
+
+### Convenciones de UI (alineadas con `db-keeper` y `db-profiler`)
+Esos dos proyectos (en `D:\DEVS\`) son la **referencia visual**; al tocar layout/UI, copiar su patrón:
+- **Shell**: sidebar colapsable con toggle **circular montado a caballo del borde derecho** (abajo; chevron que rota 180°), estado persistido en `localStorage` (`dbrefresh.sidebarCollapsed`). `.app` es `height:100vh; overflow:hidden`: el header queda fijo y scrollea solo `.app-main`.
+- **Header**: `.app-header` (56px, misma altura que `.sidebar-head`) con el **usuario arriba a la derecha** (`UserMenu`: avatar con iniciales + nombre + rol; desplegable con email, cambiar contraseña y cerrar sesión; cierra con click fuera o Escape).
+- **Ajustes**: `settings-layout` = **nav vertical de secciones** + card por sección, con **punto de estado** por sección (verde = configurada). Campos con `label` + `hint`.
 
 ## Hardening de seguridad (Fase 5)
 - **Cabeceras**: `helmet` (CSP, HSTS, nosniff, X-Frame-Options SAMEORIGIN), `x-powered-by` off, `trust proxy=1`, límite de body JSON `256kb`. `errorHandler` respeta el status HTTP de errores no-AppError (p.ej. body-parser → 413).
