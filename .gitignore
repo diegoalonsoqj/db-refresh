@@ -15,6 +15,7 @@ secrets/
 gcp-sa*.json
 *serviceaccount*.json
 *.pem
+*recovery-codes*.txt
 
 # Logs
 *.log
