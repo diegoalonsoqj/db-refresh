@@ -8,13 +8,40 @@ import * as schedule from '../controllers/schedule.controller.js';
 import * as usersCtl from '../controllers/users.controller.js';
 import { authenticate, requireRole } from '../auth/middleware.js';
 import { loginLimiter } from '../middleware/rateLimit.js';
+import { pool } from '../data/pool.js';
+import { config } from '../config/index.js';
+
+// `with { type: 'json' }` evita leer el package.json a mano solo para la versión.
+import pkg from '../../package.json' with { type: 'json' };
 
 export const router = Router();
 
 const admin = [authenticate, requireRole('admin')];
 const operator = [authenticate, requireRole('operator', 'admin')];
 
-router.get('/health', (_req, res) => res.json({ ok: true }));
+// Público y barato: `ok` se mantiene por compatibilidad; el resto alimenta la
+// sección "Sistema" de Ajustes (estado de la BD, versión, uptime).
+router.get('/health', async (_req, res) => {
+  const started = Date.now();
+  let db = false;
+  let dbLatencyMs = null;
+  try {
+    await pool.query('SELECT 1');
+    db = true;
+    dbLatencyMs = Date.now() - started;
+  } catch {
+    db = false; // la API responde igual: el health refleja el fallo, no lo propaga
+  }
+  res.json({
+    ok: true,
+    db,
+    dbLatencyMs,
+    version: pkg.version,
+    env: config.env,
+    uptimeSecs: Math.floor(process.uptime()),
+    now: new Date().toISOString(),
+  });
+});
 
 // --- Auth ---
 router.get('/auth/methods', auth.methods); // público: qué fuentes hay (local/ad)

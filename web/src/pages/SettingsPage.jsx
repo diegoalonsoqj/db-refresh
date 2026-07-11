@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client.js';
+import { useAuth } from '../auth/AuthContext.jsx';
 
 function ResultLine({ result }) {
   if (!result) return null;
@@ -12,19 +13,49 @@ function ResultLine({ result }) {
   );
 }
 
-function AdSection() {
-  const [cur, setCur] = useState(null);
+/** Campo con etiqueta y pista debajo (mismo patrón que db-keeper / db-profiler). */
+function Field({ label, hint, children }) {
+  return (
+    <label className="field">
+      <span className="field-label">{label}</span>
+      {children}
+      {hint && <span className="field-hint">{hint}</span>}
+    </label>
+  );
+}
+
+function SectionHead({ title, description, pill }) {
+  return (
+    <div className="section-head">
+      <div>
+        <h3>{title}</h3>
+        {description && <p className="muted small">{description}</p>}
+      </div>
+      {pill}
+    </div>
+  );
+}
+
+function fmtDate(iso) {
+  return iso ? new Date(iso).toLocaleString() : '—';
+}
+
+function AdSection({ data, onReload }) {
   const [form, setForm] = useState({ url: '', baseDn: '', bindDn: '', bindPassword: '' });
   const [msg, setMsg] = useState(null);
   const [test, setTest] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  const load = () =>
-    api.get('/settings/ad').then((d) => {
-      setCur(d);
-      setForm({ url: d.url ?? '', baseDn: d.baseDn ?? '', bindDn: d.bindDn ?? '', bindPassword: '' });
+  // El formulario arranca desde lo guardado; la password nunca vuelve del backend.
+  useEffect(() => {
+    if (!data) return;
+    setForm({
+      url: data.url ?? '',
+      baseDn: data.baseDn ?? '',
+      bindDn: data.bindDn ?? '',
+      bindPassword: '',
     });
-  useEffect(() => { load(); }, []);
+  }, [data]);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
@@ -32,12 +63,12 @@ function AdSection() {
     e.preventDefault();
     setBusy(true); setMsg(null); setTest(null);
     try {
-      // no enviar bindPassword vacío: el backend conserva el guardado
+      // no enviar bindPassword vacío: el backend conserva la guardada
       const body = { url: form.url, baseDn: form.baseDn, bindDn: form.bindDn };
       if (form.bindPassword) body.bindPassword = form.bindPassword;
       await api.put('/settings/ad', body);
       setMsg({ ok: true, message: 'Guardado' });
-      await load();
+      await onReload();
     } catch (err) {
       setMsg({ ok: false, error: err.message });
     } finally { setBusy(false); }
@@ -56,41 +87,53 @@ function AdSection() {
 
   return (
     <form className="card stack" onSubmit={save}>
-      <div className="row between">
-        <h3 style={{ margin: 0 }}>AD / LDAP</h3>
-        {cur && <span className="pill">{cur.source ? `fuente: ${cur.source}` : 'sin configurar'}</span>}
-      </div>
-      <label>URL<input value={form.url} onChange={set('url')} placeholder="ldaps://ad.empresa.local:636" /></label>
-      <label>Base DN<input value={form.baseDn} onChange={set('baseDn')} placeholder="DC=empresa,DC=local" /></label>
-      <label>Bind DN<input value={form.bindDn} onChange={set('bindDn')} placeholder="CN=svc,OU=...,DC=..." /></label>
-      <label>
-        Bind password
+      <SectionHead
+        title="AD / LDAP"
+        description="Permite iniciar sesión con las credenciales del directorio. Sin esto, el login solo ofrece cuentas locales."
+        pill={<span className={`pill ${data?.url ? 'on' : ''}`}>{data?.url ? 'configurado' : 'sin configurar'}</span>}
+      />
+
+      <Field label="URL" hint="Usa ldaps:// (636) siempre que el directorio lo soporte.">
+        <input value={form.url} onChange={set('url')} placeholder="ldaps://ad.empresa.local:636" />
+      </Field>
+      <Field label="Base DN" hint="Rama bajo la que se buscan los usuarios.">
+        <input value={form.baseDn} onChange={set('baseDn')} placeholder="DC=empresa,DC=local" />
+      </Field>
+      <Field label="Bind DN" hint="Cuenta de servicio con permiso de lectura para buscar usuarios.">
+        <input value={form.bindDn} onChange={set('bindDn')} placeholder="CN=svc,OU=...,DC=..." />
+      </Field>
+      <Field
+        label="Bind password"
+        hint={data?.hasBindPassword ? 'Ya hay una guardada (cifrada). Déjalo vacío para conservarla.' : 'Se guarda cifrada (AES-256-GCM).'}
+      >
         <input
           type="password"
           value={form.bindPassword}
           onChange={set('bindPassword')}
-          placeholder={cur?.hasBindPassword ? '•••••• (guardado; deja vacío para conservar)' : ''}
+          placeholder={data?.hasBindPassword ? '•••••• (guardada)' : ''}
         />
-      </label>
+      </Field>
+
       <div className="row gap">
         <button className="btn primary" disabled={busy}>Guardar</button>
         <button type="button" className="btn" onClick={doTest} disabled={busy}>Probar conexión</button>
       </div>
       <ResultLine result={msg} />
       <ResultLine result={test} />
+
+      <dl className="meta-grid">
+        <div><dt>Origen</dt><dd>{data?.source ?? 'sin definir'}</dd></div>
+        <div><dt>Última actualización</dt><dd>{fmtDate(data?.updatedAt)}</dd></div>
+      </dl>
     </form>
   );
 }
 
-function GcpSection() {
-  const [cur, setCur] = useState(null);
+function GcpSection({ data, onReload }) {
   const [json, setJson] = useState('');
   const [msg, setMsg] = useState(null);
   const [test, setTest] = useState(null);
   const [busy, setBusy] = useState(false);
-
-  const load = () => api.get('/settings/gcp').then(setCur);
-  useEffect(() => { load(); }, []);
 
   const onFile = (e) => {
     const file = e.target.files?.[0];
@@ -107,7 +150,7 @@ function GcpSection() {
       await api.put('/settings/gcp', { json });
       setMsg({ ok: true, message: 'Service account guardada' });
       setJson('');
-      await load();
+      await onReload();
     } catch (err) {
       setMsg({ ok: false, error: err.details?.missing ? `Faltan campos: ${err.details.missing.join(', ')}` : err.message });
     } finally { setBusy(false); }
@@ -122,38 +165,125 @@ function GcpSection() {
 
   return (
     <form className="card stack" onSubmit={save}>
-      <div className="row between">
-        <h3 style={{ margin: 0 }}>GCP Service Account</h3>
-        {cur && <span className={`pill ${cur.configured ? 'on' : ''}`}>{cur.configured ? 'configurada' : 'sin configurar'}</span>}
-      </div>
-      {cur?.configured && (
-        <div className="muted small mono">{cur.clientEmail} · {cur.projectId}</div>
-      )}
-      <label>
-        Subir JSON de la SA
+      <SectionHead
+        title="GCP Service Account"
+        description="Credenciales con las que la app habla con Cloud SQL Admin API y Cloud Storage. Sin esto no se pueden listar backups ni restaurar."
+        pill={<span className={`pill ${data?.configured ? 'on' : ''}`}>{data?.configured ? 'configurada' : 'sin configurar'}</span>}
+      />
+
+      <Field label="Subir JSON de la SA" hint="El archivo no se guarda en disco: se cifra y va a la base de datos.">
         <input type="file" accept="application/json,.json" onChange={onFile} />
-      </label>
-      <label>
-        …o pegar el contenido
-        <textarea className="textarea" value={json} onChange={(e) => setJson(e.target.value)} placeholder='{ "type": "service_account", ... }' />
-      </label>
+      </Field>
+      <Field label="…o pegar el contenido" hint="Debe incluir client_email, private_key y project_id.">
+        <textarea
+          className="textarea"
+          value={json}
+          onChange={(e) => setJson(e.target.value)}
+          placeholder='{ "type": "service_account", ... }'
+        />
+      </Field>
+
       <div className="row gap">
         <button className="btn primary" disabled={busy || !json.trim()}>Guardar</button>
         <button type="button" className="btn" onClick={doTest} disabled={busy}>Probar credenciales</button>
       </div>
       <ResultLine result={msg} />
       <ResultLine result={test} />
+
+      <dl className="meta-grid">
+        <div><dt>Service account</dt><dd className="mono">{data?.clientEmail ?? '—'}</dd></div>
+        <div><dt>Proyecto</dt><dd className="mono">{data?.projectId ?? '—'}</dd></div>
+        <div><dt>Origen</dt><dd>{data?.source ?? 'sin definir'}</dd></div>
+        <div><dt>Última actualización</dt><dd>{fmtDate(data?.updatedAt)}</dd></div>
+      </dl>
     </form>
   );
 }
 
+/** Solo lectura: estado de la API y de la BD, versión y sesión actual. */
+function SystemSection() {
+  const { user } = useAuth();
+  const [health, setHealth] = useState(null);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    api.get('/health').then(setHealth).catch((e) => setErr(e.message));
+  }, []);
+
+  return (
+    <div className="card stack">
+      <SectionHead title="Sistema" description="Estado de la aplicación. No hay nada que configurar aquí." />
+
+      {err && <div className="alert error">{err}</div>}
+
+      <div className="row gap">
+        <span className="pill on">API</span>
+        <span className={`pill ${health?.db ? 'on' : ''}`}>
+          BD{health?.dbLatencyMs != null ? ` · ${health.dbLatencyMs} ms` : ''}
+        </span>
+      </div>
+
+      <dl className="meta-grid">
+        <div><dt>Versión</dt><dd>{health?.version ?? '—'}</dd></div>
+        <div><dt>Entorno</dt><dd>{health?.env ?? '—'}</dd></div>
+        <div>
+          <dt>Uptime</dt>
+          <dd>{health ? `${Math.floor(health.uptimeSecs / 60)} min` : '—'}</dd>
+        </div>
+        <div><dt>Sesión</dt><dd className="mono">{user?.email}</dd></div>
+      </dl>
+    </div>
+  );
+}
+
+const SECTIONS = [
+  { id: 'ad', label: 'AD / LDAP' },
+  { id: 'gcp', label: 'GCP' },
+  { id: 'system', label: 'Sistema' },
+];
+
 export default function SettingsPage() {
+  const [section, setSection] = useState('ad');
+  const [ad, setAd] = useState(null);
+  const [gcp, setGcp] = useState(null);
+
+  // Los estados viven aquí (no en cada sección) para que la nav pueda mostrar
+  // de un vistazo qué está configurado y qué no.
+  const loadAd = () => api.get('/settings/ad').then(setAd);
+  const loadGcp = () => api.get('/settings/gcp').then(setGcp);
+  useEffect(() => { loadAd(); loadGcp(); }, []);
+
+  const status = { ad: Boolean(ad?.url), gcp: Boolean(gcp?.configured) };
+
   return (
     <div>
       <h2>Ajustes</h2>
-      <div className="stack" style={{ maxWidth: 560 }}>
-        <AdSection />
-        <GcpSection />
+
+      <div className="settings-layout">
+        <nav className="settings-nav">
+          {SECTIONS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className={section === s.id ? 'active' : ''}
+              onClick={() => setSection(s.id)}
+            >
+              <span>{s.label}</span>
+              {s.id in status && (
+                <span
+                  className={`dot ${status[s.id] ? 'ok' : ''}`}
+                  title={status[s.id] ? 'Configurado' : 'Sin configurar'}
+                />
+              )}
+            </button>
+          ))}
+        </nav>
+
+        <div className="settings-content">
+          {section === 'ad' && <AdSection data={ad} onReload={loadAd} />}
+          {section === 'gcp' && <GcpSection data={gcp} onReload={loadGcp} />}
+          {section === 'system' && <SystemSection />}
+        </div>
       </div>
     </div>
   );

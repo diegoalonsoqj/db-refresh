@@ -37,7 +37,8 @@ a { color: var(--primary); text-decoration: none; }
 .mono { font-family: var(--mono); }
 
 /* --- Layout --- */
-.app { display: flex; min-height: 100vh; }
+/* Altura fija: el header queda anclado arriba y scrollea solo .app-main. */
+.app { display: flex; height: 100vh; overflow: hidden; }
 
 /* --- Sidebar --- */
 .sidebar {
@@ -60,30 +61,45 @@ a { color: var(--primary); text-decoration: none; }
 .sidebar-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: .5rem;
   padding: .85rem .9rem;
   height: 56px;
   border-bottom: 1px solid var(--border);
 }
-.app.collapsed .sidebar-head { flex-direction: column; height: auto; gap: .4rem; padding: .6rem; }
+.app.collapsed .sidebar-head { justify-content: center; padding: .85rem .6rem; }
 
 .brand { display: flex; align-items: center; gap: .5rem; font-weight: 700; white-space: nowrap; }
 
-.collapse-btn {
-  background: transparent;
+/* Toggle circular montado a caballo del borde derecho del sidebar: la mitad
+   sobresale sobre el contenido (por eso el sidebar es overflow:visible). */
+.sidebar-toggle {
+  position: absolute;
+  right: -13px;
+  bottom: 22px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--surface-2);
   border: 1px solid var(--border);
   color: var(--muted);
-  width: 26px; height: 26px;
-  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   cursor: pointer;
-  flex: 0 0 auto;
-  line-height: 1;
+  z-index: 30;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .35);
+  transition: color .15s ease, background .15s ease, border-color .15s ease;
 }
-.collapse-btn:hover { color: var(--text); border-color: var(--primary); }
+.sidebar-toggle:hover { color: #fff; background: var(--primary); border-color: var(--primary); }
+.sidebar-toggle svg { width: 16px; height: 16px; transition: transform .18s ease; }
+/* Colapsado el chevron apunta a la derecha (= expandir). */
+.app.collapsed .sidebar-toggle svg { transform: rotate(180deg); }
 
 /* --- Nav vertical --- */
-.nav { display: flex; flex-direction: column; gap: .15rem; padding: .6rem; flex: 1; }
+/* padding-bottom: deja hueco para el .sidebar-toggle, anclado abajo.
+   Sin overflow: recortaría los tooltips que salen fuera del sidebar. */
+.nav { display: flex; flex-direction: column; gap: .15rem; padding: .6rem .6rem 3.5rem; flex: 1; }
 .nav a {
   display: flex;
   align-items: center;
@@ -101,33 +117,14 @@ a { color: var(--primary); text-decoration: none; }
 .nav a.active .nav-icon { color: var(--text); }
 .nav-label { overflow: hidden; text-overflow: ellipsis; }
 
-/* --- Pie del sidebar (usuario + acciones) --- */
-.sidebar-foot { border-top: 1px solid var(--border); padding: .6rem; display: flex; flex-direction: column; gap: .15rem; }
-.userinfo { display: flex; align-items: center; gap: .7rem; padding: .45rem .7rem; }
-.user-meta { display: flex; flex-direction: column; line-height: 1.25; overflow: hidden; }
-.user-email { font-size: .8rem; overflow: hidden; text-overflow: ellipsis; }
-.role { color: var(--primary); font-weight: 600; font-size: .78rem; }
-.foot-btn {
-  display: flex; align-items: center; gap: .7rem;
-  background: transparent; border: none; color: var(--muted);
-  padding: .5rem .7rem; border-radius: 8px; cursor: pointer;
-  font: inherit; font-size: .88rem; text-align: left; white-space: nowrap; overflow: hidden;
-}
-.foot-btn:hover { background: var(--surface-2); color: var(--text); }
-
 /* --- Estado colapsado: solo iconos, centrados --- */
 .app.collapsed .brand-text,
-.app.collapsed .nav-label,
-.app.collapsed .user-meta { display: none; }
-.app.collapsed .nav a,
-.app.collapsed .userinfo,
-.app.collapsed .foot-btn { justify-content: center; gap: 0; padding-left: 0; padding-right: 0; }
+.app.collapsed .nav-label { display: none; }
+.app.collapsed .nav a { justify-content: center; gap: 0; padding-left: 0; padding-right: 0; }
 
 /* --- Tooltips (solo en modo colapsado; expandido ya muestra el texto) --- */
 /* overflow:visible para que el ::after no lo recorte el propio item */
-.app.collapsed .nav a,
-.app.collapsed .foot-btn,
-.app.collapsed .userinfo { position: relative; overflow: visible; }
+.app.collapsed .nav a { position: relative; overflow: visible; }
 .app.collapsed [data-tooltip]:hover::after {
   content: attr(data-tooltip);
   position: absolute;
@@ -147,7 +144,95 @@ a { color: var(--primary); text-decoration: none; }
 }
 
 /* --- Contenido --- */
-.content { flex: 1; min-width: 0; padding: 1.5rem 2rem; }
+.content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+/* --- Header (usuario arriba a la derecha) --- */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .75rem;
+  height: 56px;              /* misma altura que .sidebar-head: las líneas casan */
+  flex-shrink: 0;
+  padding: 0 1.25rem 0 2rem;
+  border-bottom: 1px solid var(--border);
+}
+.header-right { display: flex; align-items: center; gap: .75rem; }
+.app-main { flex: 1; min-height: 0; overflow-y: auto; padding: 1.5rem 2rem; }
+
+/* --- Menú de usuario --- */
+.user-menu { position: relative; }
+.user-trigger {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text);
+  padding: .3rem .5rem;
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+}
+.user-trigger:hover { background: var(--surface-2); border-color: var(--border); }
+.avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: .75rem;
+  font-weight: 700;
+}
+.user-id { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
+.user-id strong { font-size: .85rem; font-weight: 600; }
+.user-id small { color: var(--muted); font-size: .72rem; }
+.chevron { display: inline-flex; color: var(--muted); }
+.chevron svg { width: 15px; height: 15px; transition: transform .18s ease; }
+.chevron.up svg { transform: rotate(180deg); }
+
+.dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 230px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: .35rem;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
+  z-index: 50;
+}
+.dropdown-head {
+  display: flex;
+  flex-direction: column;
+  gap: .1rem;
+  padding: .55rem .6rem;
+  margin-bottom: .35rem;
+  border-bottom: 1px solid var(--border);
+}
+.dropdown-head strong { font-size: .85rem; }
+.dropdown-head small { color: var(--muted); font-size: .75rem; word-break: break-all; }
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  padding: .55rem .6rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: .88rem;
+  text-align: left;
+}
+.dropdown-item:hover { background: var(--surface-2); }
+.dropdown-item.danger { color: var(--err); }
 
 /* --- Center (login / estados) --- */
 .center {
@@ -172,7 +257,7 @@ a { color: var(--primary); text-decoration: none; }
 
 label { display: flex; flex-direction: column; gap: .35rem; font-weight: 500; }
 
-input, select {
+input, select, textarea {
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text);
@@ -181,7 +266,7 @@ input, select {
   font-size: .9rem;
   font-family: inherit;
 }
-input:focus, select:focus { outline: 2px solid var(--primary); border-color: transparent; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
 input[type="checkbox"] { width: 16px; height: 16px; }
 
 /* --- Buttons --- */
@@ -274,10 +359,56 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 
 .row.gap { gap: .6rem; }
 .checkline { flex-direction: row; align-items: center; gap: .5rem; }
-.pill { font-size: .72rem; padding: .1rem .5rem; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+.pill { font-size: .72rem; padding: .1rem .5rem; border-radius: 999px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
 .pill.on { background: rgba(46,204,113,.15); color: var(--ok); }
 .textarea { min-height: 150px; font-family: var(--mono); font-size: .8rem; resize: vertical; }
 .result { margin-top: .5rem; }
+
+/* --- Ajustes: nav de secciones + panel (patrón de db-keeper / db-profiler) --- */
+.settings-layout { display: flex; gap: 1.5rem; align-items: flex-start; }
+.settings-nav { display: flex; flex-direction: column; gap: .15rem; flex: 0 0 180px; }
+.settings-nav button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  padding: .55rem .7rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: .9rem;
+  text-align: left;
+}
+.settings-nav button:hover { background: var(--surface-2); color: var(--text); }
+.settings-nav button.active { background: var(--surface-2); color: var(--text); font-weight: 600; }
+.settings-content { flex: 1; min-width: 0; }
+
+/* Punto de estado: verde = configurado, gris = pendiente. */
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); opacity: .5; flex: 0 0 8px; }
+.dot.ok { background: var(--ok); opacity: 1; }
+
+.section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.section-head > :first-child { min-width: 0; }   /* la descripción cede, no la píldora */
+.section-head .pill { flex: 0 0 auto; }
+.section-head h3 { margin: 0 0 .2rem; }
+.section-head p { margin: 0; }
+
+.field-label { font-weight: 500; }
+.field-hint { font-size: .78rem; color: var(--muted); font-weight: 400; }
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: .8rem;
+  margin: .25rem 0 0;
+  padding-top: .9rem;
+  border-top: 1px solid var(--border);
+}
+.meta-grid dt { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.meta-grid dd { margin: .15rem 0 0; font-size: .85rem; word-break: break-all; }
 
 /* --- Log (SSE) --- */
 .log {

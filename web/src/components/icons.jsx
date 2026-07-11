@@ -76,3 +76,11 @@ export const IconKey = () => (
 export const IconLogout = () => (
   <Svg><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" /></Svg>
 );
+
+export const IconChevronLeft = () => (
+  <Svg><path d="M15 18 9 12l6-6" /></Svg>
+);
+
+export const IconChevronDown = () => (
+  <Svg><path d="m6 9 6 6 6-6" /></Svg>
+);
