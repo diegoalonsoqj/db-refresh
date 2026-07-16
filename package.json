@@ -9,6 +9,7 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
+    "dev:all": "node scripts/dev.js",
     "worker": "node server/jobs/worker.js",
     "scheduler": "node server/jobs/scheduler.js",
     "migrate": "node db/migrate.js",

@@ -78,7 +78,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"   # 
 | Variable | Descripción | Por defecto |
 |---|---|---|
 | `NODE_ENV` | `development` \| `production` | `development` |
-| `PORT` | Puerto de la API (el proxy de Vite en dev espera `5000`) | `5000` |
+| `PORT` | Puerto de la API (el proxy de Vite en dev lo lee de aquí) | `3004` |
 | `LOG_LEVEL` | Nivel de log (pino) | `info` |
 | `APP_DB_HOST/PORT/NAME/USER/PASSWORD` | Conexión a la BD de la app | — |
 | `APP_DB_POOL_MAX` | Máx. conexiones del pool | `10` |
@@ -105,11 +105,19 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"   # 
 ### Desarrollo
 
 ```bash
-npm run dev                 # API con --watch (:5000, el proxy de Vite apunta ahí)
+npm run dev:all             # API + worker + scheduler + frontend en una terminal
+```
+
+O cada proceso por separado, si prefieres una terminal por servicio:
+
+```bash
+npm run dev                 # API con --watch (:3004, el proxy de Vite apunta ahí)
 npm run worker              # worker de jobs (otra terminal)
 npm run scheduler           # scheduler (opcional, otra terminal)
 npm --prefix web run dev    # frontend en :5173 (proxya /api -> la API)
 ```
+
+`dev:all` acepta un subconjunto: `node scripts/dev.js api web`.
 
 Abre **http://localhost:5173**.
 
