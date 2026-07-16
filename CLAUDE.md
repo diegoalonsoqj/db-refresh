@@ -77,7 +77,7 @@ Comparten base `server/engines/sqldump/SqlDumpAdapter.js`; `PostgresAdapter`/`My
 **Scheduler** in-app (`server/jobs/scheduler.js`, `npm run scheduler`): proceso aparte con `node-cron` que reconcilia `scheduled_restores` activas cada 30s (alta/baja/cambio) y encola `restore_jobs` vía `schedule.service.triggerSchedule` (reutiliza `restore.service.launchRestore`; el worker es el único ejecutor). `mapping` jsonb = `[{backupFile,targetDb}]`. CRUD en `/api/schedules` (+`/:id/run` dispara ya). RBAC schedules: **lecturas → autenticado, escrituras/run → operator|admin**. Pendiente: cálculo de `next_run_at`.
 
 ## Frontend (Fase 4)
-`web/` React 18 + Vite 6, CSS propio (sin framework), `react-router-dom`. Dev: `npm --prefix web run dev` (:5173, proxya `/api`→:5000 para cookie same-origin). Base: `api/client.js` (fetch `credentials:'include'`), `auth/` (AuthContext + `RequireAuth` guard por rol), `hooks/useList.js`, `components/` (Layout, StatusBadge, Modal). Backend: añadido `GET /api/restores` (listar jobs).
+`web/` React 18 + Vite 6, CSS propio (sin framework), `react-router-dom`. Dev: `npm --prefix web run dev` (:5173, proxya `/api`→la API para cookie same-origin; el target lo deriva del `PORT` del `.env` de la raíz vía `loadEnv`, default 3004). Base: `api/client.js` (fetch `credentials:'include'`), `auth/` (AuthContext + `RequireAuth` guard por rol), `hooks/useList.js`, `components/` (Layout, StatusBadge, Modal). Backend: añadido `GET /api/restores` (listar jobs).
 **Pantallas:** Login; Historial (`/jobs`); Detalle (`/jobs/:id`, items + log SSE en vivo); Lanzar restore (`/launch`, operator+). **UI admin:** Programadas (`/schedules`, operator+: CRUD + editor de mapping + ejecutar-ya); Catálogo (`/catalog`, admin: tabs Proyectos/Instancias/Buckets con CRUD + modal de vínculo N:N instancia-bucket con default); Ajustes (`/settings`, admin). Nav condicionada por rol.
 
 ### Convenciones de UI (alineadas con `db-keeper` y `db-profiler`)
@@ -101,7 +101,8 @@ Esos dos proyectos (en `D:\DEVS\`) son la **referencia visual**; al tocar layout
 
 ## Estado actual
 Backend + frontend completos, con hardening (headers, rate-limit, gestión de usuarios, auditoría, secretos) y **tests unitarios (20 ✓)**. `npm install` (raíz y `web/`) + `npm run migrate` OK; `web` compila (`vite build`, 52 módulos). Verificado E2E por HTTP: auth híbrida local+AD, RBAC, settings, catálogo CRUD, schedules+scheduler, y todo el hardening (helmet headers, 413 body-limit, rate-limit 429, users CRUD + auto-protección, change-password, auditoría con FK SET NULL).
-Documentación: **`README.md`** (instalación/config/ejecución/API/tests/despliegue). Se alineó `PORT=5000` en `.env.example` con el proxy de Vite.
+Documentación: **`README.md`** (instalación/config/ejecución/API/tests/despliegue).
+**Dev runner:** `npm run dev:all` (`scripts/dev.js`, Node puro sin deps) levanta API+worker+scheduler+web en una terminal (salida prefijada, Ctrl+C mata el árbol con `taskkill /T` en Windows, fail-fast si un servicio cae); admite subconjunto (`node scripts/dev.js api web`). **Puerto de la API: 3004** — `vite.config.js` lo lee del `.env` de la raíz, así proxy y API no se desalinean.
 Pendiente para cerrar (requiere infra real del usuario): **prueba E2E de un job real contra Cloud SQL** (camino GCP de adaptadores sin ejercitar contra infra real) y **login AD contra un directorio real** (cableado verificado, no probado contra AD vivo). Menor: `next_run_at`, revocación de sesión (denylist de JWT), test del flujo de restore con GCP mockeado.
 </content>
 </invoke>
