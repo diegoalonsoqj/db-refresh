@@ -3,6 +3,7 @@ import { api } from '../../api/client.js';
 import { useList } from '../../hooks/useList.js';
 import Modal from '../../components/Modal.jsx';
 import LinkBucketsModal from './LinkBucketsModal.jsx';
+import PostScriptsModal from './PostScriptsModal.jsx';
 
 const ENGINES = ['sqlserver', 'postgres', 'mysql'];
 const empty = { projectRef: '', instanceName: '', engine: 'postgres', dbHost: '', dbPort: '', adminUser: '', secretRef: '', isActive: true };
@@ -14,6 +15,7 @@ export default function InstancesPanel({ projects, buckets }) {
   const [formErr, setFormErr] = useState(null);
   const [busy, setBusy] = useState(false);
   const [linkFor, setLinkFor] = useState(null);
+  const [scriptsFor, setScriptsFor] = useState(null);
 
   const openNew = () => { setForm({ ...empty, projectRef: projects[0]?.id ?? '' }); setEditing({}); setFormErr(null); };
   const openEdit = (i) => {
@@ -63,6 +65,7 @@ export default function InstancesPanel({ projects, buckets }) {
               <td><span className={`pill ${i.is_active ? 'on' : ''}`}>{i.is_active ? 'sí' : 'no'}</span></td>
               <td className="actions">
                 <button className="btn ghost small" onClick={() => setLinkFor(i)}>Buckets</button>
+                <button className="btn ghost small" onClick={() => setScriptsFor(i)}>Post-scripts</button>
                 <button className="btn ghost small" onClick={() => openEdit(i)}>Editar</button>
                 <button className="btn ghost small" onClick={() => remove(i)}>Eliminar</button>
               </td>
@@ -90,8 +93,12 @@ export default function InstancesPanel({ projects, buckets }) {
               <label style={{ flex: 1 }}>Puerto<input type="number" value={form.dbPort} onChange={set('dbPort')} placeholder="opc." /></label>
             </div>
             <label>Usuario admin<input value={form.adminUser} onChange={set('adminUser')} required /></label>
-            <label>Secret ref (referencia a Secret Manager, NO el password)
-              <input className="mono" value={form.secretRef} onChange={set('secretRef')} placeholder="sm://... o clave" required />
+            <label>Secret ref (referencia al password, NO el password)
+              <input className="mono" value={form.secretRef} onChange={set('secretRef')} placeholder="sm://projects/<p>/secrets/<s>" required />
+              <span className="muted small">
+                <span className="mono">sm://projects/&lt;p&gt;/secrets/&lt;s&gt;[/versions/&lt;v&gt;]</span> (Secret Manager) o{' '}
+                <span className="mono">env:NOMBRE</span> (variable de entorno, dev). Se usa para los post-scripts.
+              </span>
             </label>
             <label className="checkline">
               <input type="checkbox" checked={form.isActive} onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))} />
@@ -106,6 +113,7 @@ export default function InstancesPanel({ projects, buckets }) {
         </Modal>
       )}
 
+      {scriptsFor && <PostScriptsModal instance={scriptsFor} onClose={() => setScriptsFor(null)} />}
       {linkFor && <LinkBucketsModal instance={linkFor} allBuckets={buckets} onClose={() => setLinkFor(null)} />}
     </div>
   );

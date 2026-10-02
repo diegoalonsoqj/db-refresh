@@ -62,6 +62,24 @@ CREATE TABLE IF NOT EXISTS instance_buckets (
   PRIMARY KEY (instance_ref, bucket_ref)
 );
 
+-- Post-scripts SQL por instancia: se ejecutan (en sort_order) tras un job en el
+-- que TODAS las restauraciones salieron OK. Equivale a EXTRA_SQL_SCRIPTS_PATH del
+-- script original. sql_text admite separadores `GO` (lotes). database_name NULL
+-- = BD por defecto del login (master en SQL Server).
+CREATE TABLE IF NOT EXISTS instance_post_scripts (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  instance_ref  uuid NOT NULL REFERENCES gcp_instances(id) ON DELETE CASCADE,
+  name          text NOT NULL,
+  database_name text,
+  sql_text      text NOT NULL,
+  sort_order    int  NOT NULL DEFAULT 0,
+  is_active     boolean NOT NULL DEFAULT true,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (instance_ref, name)
+);
+CREATE INDEX IF NOT EXISTS idx_post_scripts_instance ON instance_post_scripts (instance_ref, sort_order);
+
 -- --- Usuarios / auth -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS app_users (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),

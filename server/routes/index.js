@@ -6,6 +6,7 @@ import * as auth from '../controllers/auth.controller.js';
 import * as catalog from '../controllers/catalog.controller.js';
 import * as schedule from '../controllers/schedule.controller.js';
 import * as usersCtl from '../controllers/users.controller.js';
+import * as postScripts from '../controllers/postScripts.controller.js';
 import { authenticate, requireRole } from '../auth/middleware.js';
 import { loginLimiter } from '../middleware/rateLimit.js';
 import { pool } from '../data/pool.js';
@@ -90,6 +91,12 @@ router.delete('/instances/:id', ...admin, catalog.deleteInstance);
 router.get('/instances/:id/buckets', authenticate, catalog.listInstanceBuckets);
 router.post('/instances/:id/buckets', ...admin, catalog.linkBucket);
 router.delete('/instances/:id/buckets/:bucketId', ...admin, catalog.unlinkBucket);
+// Post-scripts: SQL arbitrario que se ejecuta contra la instancia (y puede
+// contener datos sensibles) -> lectura y escritura solo admin.
+router.get('/instances/:id/post-scripts', ...admin, postScripts.list);
+router.post('/instances/:id/post-scripts', ...admin, postScripts.create);
+router.put('/instances/:id/post-scripts/:scriptId', ...admin, postScripts.update);
+router.delete('/instances/:id/post-scripts/:scriptId', ...admin, postScripts.remove);
 
 router.get('/buckets', authenticate, catalog.listBuckets);
 router.post('/buckets', ...admin, catalog.createBucket);
