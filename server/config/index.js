@@ -79,5 +79,10 @@ export const config = {
     pollIntervalMs: int('WORKER_POLL_INTERVAL_MS', 5000),
     operationTimeoutSeconds: int('OPERATION_TIMEOUT_SECONDS', 10800),
     operationPollIntervalSeconds: int('OPERATION_POLL_INTERVAL_SECONDS', 30),
+    // Pre-check: cuánto esperar a que la instancia no tenga operaciones en curso
+    // (backup automático, otro import...) antes de abortar el job sin tocar nada.
+    instanceIdleWaitSeconds: int('INSTANCE_IDLE_WAIT_SECONDS', 900),
+    // Timeout por lote (GO) de un post-script SQL.
+    postScriptTimeoutMs: int('POST_SCRIPT_TIMEOUT_MS', 600_000),
   },
 };
