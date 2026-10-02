@@ -51,7 +51,7 @@ function UserMenu({ onChangePassword }) {
 
   if (!user) return null;
 
-  const name = user.full_name || user.email;
+  const name = user.full_name || user.email || user.username;
 
   const doLogout = async () => {
     await logout();
@@ -79,17 +79,20 @@ function UserMenu({ onChangePassword }) {
         <div className="dropdown" role="menu">
           <div className="dropdown-head">
             <strong>{name}</strong>
-            <small>{user.email}</small>
+            <small>{user.email ?? user.username}{user.auth_source === 'ad' ? ' · AD' : ''}</small>
           </div>
-          <button
-            type="button"
-            role="menuitem"
-            className="dropdown-item"
-            onClick={() => { setOpen(false); onChangePassword(); }}
-          >
-            <IconKey />
-            Cambiar contraseña
-          </button>
+          {/* Los usuarios de AD cambian su contraseña en el directorio. */}
+          {user.auth_source !== 'ad' && (
+            <button
+              type="button"
+              role="menuitem"
+              className="dropdown-item"
+              onClick={() => { setOpen(false); onChangePassword(); }}
+            >
+              <IconKey />
+              Cambiar contraseña
+            </button>
+          )}
           <button type="button" role="menuitem" className="dropdown-item danger" onClick={doLogout}>
             <IconLogout />
             Cerrar sesión

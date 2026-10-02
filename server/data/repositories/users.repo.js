@@ -3,7 +3,7 @@
 // se devuelve al cliente (los servicios/controladores lo omiten).
 import { query } from '../pool.js';
 
-const PUBLIC_COLS = `id, email, full_name, role, auth_source, is_active, last_login_at, created_at`;
+const PUBLIC_COLS = `id, email, username, full_name, role, auth_source, is_active, last_login_at, created_at`;
 
 /** Usuario por email, incluyendo password_hash y ad_dn (para autenticar). */
 export async function getUserByEmailForAuth(email) {
@@ -12,6 +12,17 @@ export async function getUserByEmailForAuth(email) {
        FROM app_users
       WHERE lower(email) = lower($1)`,
     [email],
+  );
+  return rows[0] ?? null;
+}
+
+/** Usuario de AD por su cuenta (sAMAccountName, sin dominio). */
+export async function getAdUserByUsername(username) {
+  const { rows } = await query(
+    `SELECT ${PUBLIC_COLS}, ad_dn
+       FROM app_users
+      WHERE auth_source = 'ad' AND lower(username) = lower($1)`,
+    [username],
   );
   return rows[0] ?? null;
 }
@@ -32,7 +43,7 @@ export async function touchLastLogin(id) {
 
 /** Lista usuarios (público, sin secretos). */
 export async function listUsers() {
-  const { rows } = await query(`SELECT ${PUBLIC_COLS} FROM app_users ORDER BY email`);
+  const { rows } = await query(`SELECT ${PUBLIC_COLS} FROM app_users ORDER BY lower(COALESCE(email, username))`);
   return rows;
 }
 
@@ -71,24 +82,32 @@ export async function deleteUser(id) {
   return rowCount > 0;
 }
 
-/**
- * Crea o actualiza un usuario de AD tras un login exitoso. Idempotente por email.
- * En creación asigna `role` (rol por defecto de AD); en actualización CONSERVA el
- * rol existente (un admin pudo haberlo cambiado) y solo refresca datos de AD.
- */
-export async function upsertAdUser({ email, fullName, adDn, role }) {
+/** Alta de un usuario de AD por un admin (sin password: se valida contra el directorio). */
+export async function insertAdUser({ username, email, fullName, role }) {
   const { rows } = await query(
-    `INSERT INTO app_users (email, full_name, role, auth_source, ad_dn, is_active)
-          VALUES ($1, $2, $3, 'ad', $4, true)
-     ON CONFLICT (email) DO UPDATE
-          SET full_name   = EXCLUDED.full_name,
-              auth_source = 'ad',
-              ad_dn       = EXCLUDED.ad_dn,
-              is_active   = true
+    `INSERT INTO app_users (email, username, full_name, role, auth_source, is_active)
+          VALUES ($1, $2, $3, $4, 'ad', true)
        RETURNING ${PUBLIC_COLS}`,
-    [email, fullName ?? null, role, adDn],
+    [email ?? null, username, fullName ?? null, role],
   );
   return rows[0];
+}
+
+/**
+ * Tras un login AD correcto, refresca lo que da el directorio (nombre, DN y,
+ * si no tenía, el correo). No toca rol ni estado: los gestiona el admin.
+ */
+export async function refreshAdProfile(id, { fullName, email, adDn }) {
+  const { rows } = await query(
+    `UPDATE app_users
+        SET full_name = COALESCE($2, full_name),
+            email     = COALESCE(email, $3),
+            ad_dn     = COALESCE($4, ad_dn)
+      WHERE id = $1
+      RETURNING ${PUBLIC_COLS}`,
+    [id, fullName ?? null, email ?? null, adDn ?? null],
+  );
+  return rows[0] ?? null;
 }
 
 /**

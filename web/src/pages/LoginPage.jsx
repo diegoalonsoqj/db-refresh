@@ -6,8 +6,7 @@ import { api } from '../api/client.js';
 export default function LoginPage() {
   const { user, login } = useAuth();
   const [methods, setMethods] = useState({ local: true, ad: false });
-  const [source, setSource] = useState('local');
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -25,7 +24,7 @@ export default function LoginPage() {
     setError(null);
     setBusy(true);
     try {
-      await login(email, password, source);
+      await login(username, password);
       navigate(location.state?.from?.pathname || '/', { replace: true });
     } catch (err) {
       setError(err.status === 401 ? 'Credenciales inválidas' : err.message);
@@ -34,31 +33,26 @@ export default function LoginPage() {
     }
   };
 
-  const isAd = source === 'ad';
-
   return (
     <div className="center">
       <form className="card login" onSubmit={submit}>
         <h1>🗄️ db-refresh</h1>
         <p className="muted">Inicia sesión para continuar</p>
 
-        {methods.ad && (
-          <div className="tabs" style={{ marginBottom: 0 }}>
-            <button type="button" className={!isAd ? 'active' : ''} onClick={() => setSource('local')}>Local</button>
-            <button type="button" className={isAd ? 'active' : ''} onClick={() => setSource('ad')}>Active Directory</button>
-          </div>
-        )}
-
         <label>
-          {isAd ? 'Usuario' : 'Email'}
+          {methods.ad ? 'Usuario o email' : 'Email'}
           <input
-            type={isAd ? 'text' : 'email'}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder={isAd ? 'usuario o usuario@dominio' : ''}
+            type="text"
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder={methods.ad ? 'DOMINIO\\usuario o tu@email' : 'tu@email'}
             autoFocus
             required
           />
+          {methods.ad && (
+            <span className="field-hint">Cuentas de Active Directory: tu usuario de red, con o sin dominio.</span>
+          )}
         </label>
         <label>
           Contraseña

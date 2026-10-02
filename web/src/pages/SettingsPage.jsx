@@ -40,32 +40,56 @@ function fmtDate(iso) {
   return iso ? new Date(iso).toLocaleString() : '—';
 }
 
+const AD_MODES = [
+  { id: 'direct', label: 'Bind directo (DOMINIO\\usuario)' },
+  { id: 'search', label: 'Cuenta de servicio + búsqueda' },
+];
+const AD_SECURITY = [
+  { id: 'starttls', label: 'StartTLS (ldap://, puerto 389) — recomendado' },
+  { id: 'ldaps', label: 'LDAPS (ldaps://, puerto 636)' },
+  { id: 'none', label: 'Sin cifrar (ldap://)' },
+];
+const AD_EMPTY = {
+  enabled: false, mode: 'direct', security: 'starttls', url: '', domain: '', bindDn: '', bindPassword: '',
+  searchBase: '', userFilter: '(sAMAccountName={{username}})', tlsRejectUnauthorized: true,
+};
+
 function AdSection({ data, onReload }) {
-  const [form, setForm] = useState({ url: '', baseDn: '', bindDn: '', bindPassword: '' });
+  const [form, setForm] = useState(AD_EMPTY);
   const [msg, setMsg] = useState(null);
   const [test, setTest] = useState(null);
+  const [testUser, setTestUser] = useState('');
+  const [testPass, setTestPass] = useState('');
   const [busy, setBusy] = useState(false);
 
-  // El formulario arranca desde lo guardado; la password nunca vuelve del backend.
+  // El formulario arranca desde lo guardado; la password de bind nunca vuelve del backend.
   useEffect(() => {
     if (!data) return;
     setForm({
+      enabled: Boolean(data.enabled),
+      mode: data.mode ?? 'direct',
+      security: data.security ?? 'starttls',
       url: data.url ?? '',
-      baseDn: data.baseDn ?? '',
+      domain: data.domain ?? '',
       bindDn: data.bindDn ?? '',
       bindPassword: '',
+      searchBase: data.searchBase ?? '',
+      userFilter: data.userFilter ?? AD_EMPTY.userFilter,
+      tlsRejectUnauthorized: data.tlsRejectUnauthorized ?? true,
     });
   }, [data]);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const check = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.checked }));
+  const isDirect = form.mode === 'direct';
 
   const save = async (e) => {
     e.preventDefault();
     setBusy(true); setMsg(null); setTest(null);
     try {
       // no enviar bindPassword vacío: el backend conserva la guardada
-      const body = { url: form.url, baseDn: form.baseDn, bindDn: form.bindDn };
-      if (form.bindPassword) body.bindPassword = form.bindPassword;
+      const { bindPassword, ...body } = form;
+      if (bindPassword) body.bindPassword = bindPassword;
       await api.put('/settings/ad', body);
       setMsg({ ok: true, message: 'Guardado' });
       await onReload();
@@ -77,55 +101,129 @@ function AdSection({ data, onReload }) {
   const doTest = async () => {
     setBusy(true); setTest(null); setMsg(null);
     try {
-      const body = { url: form.url, bindDn: form.bindDn };
-      if (form.bindPassword) body.bindPassword = form.bindPassword;
-      setTest(await api.post('/settings/ad/test', body));
+      setTest(await api.post('/settings/ad/test', { username: testUser.trim(), password: testPass }));
     } catch (err) {
       setTest({ ok: false, error: err.message });
-    } finally { setBusy(false); }
+    } finally {
+      setTestPass('');
+      setBusy(false);
+    }
   };
 
+  const configured = Boolean(data?.enabled && data?.url);
+
   return (
-    <form className="card stack" onSubmit={save}>
-      <SectionHead
-        title="AD / LDAP"
-        description="Permite iniciar sesión con las credenciales del directorio. Sin esto, el login solo ofrece cuentas locales."
-        pill={<span className={`pill ${data?.url ? 'on' : ''}`}>{data?.url ? 'configurado' : 'sin configurar'}</span>}
-      />
-
-      <Field label="URL" hint="Usa ldaps:// (636) siempre que el directorio lo soporte.">
-        <input value={form.url} onChange={set('url')} placeholder="ldaps://ad.empresa.local:636" />
-      </Field>
-      <Field label="Base DN" hint="Rama bajo la que se buscan los usuarios.">
-        <input value={form.baseDn} onChange={set('baseDn')} placeholder="DC=empresa,DC=local" />
-      </Field>
-      <Field label="Bind DN" hint="Cuenta de servicio con permiso de lectura para buscar usuarios.">
-        <input value={form.bindDn} onChange={set('bindDn')} placeholder="CN=svc,OU=...,DC=..." />
-      </Field>
-      <Field
-        label="Bind password"
-        hint={data?.hasBindPassword ? 'Ya hay una guardada (cifrada). Déjalo vacío para conservarla.' : 'Se guarda cifrada (AES-256-GCM).'}
-      >
-        <input
-          type="password"
-          value={form.bindPassword}
-          onChange={set('bindPassword')}
-          placeholder={data?.hasBindPassword ? '•••••• (guardada)' : ''}
+    <div className="stack">
+      <form className="card stack" onSubmit={save}>
+        <SectionHead
+          title="AD / LDAP"
+          description="Permite que los usuarios de AD dados de alta en Usuarios inicien sesión con su cuenta de red. Lo guardado aquí tiene prioridad sobre las variables AD_* del .env."
+          pill={<span className={`pill ${configured ? 'on' : ''}`}>{configured ? 'habilitado' : 'deshabilitado'}</span>}
         />
-      </Field>
 
-      <div className="row gap">
-        <button className="btn primary" disabled={busy}>Guardar</button>
-        <button type="button" className="btn" onClick={doTest} disabled={busy}>Probar conexión</button>
+        <label className="checkline">
+          <input type="checkbox" checked={form.enabled} onChange={check('enabled')} />
+          Habilitar autenticación AD
+        </label>
+
+        <Field label="Modo de autenticación" hint={isDirect
+          ? 'Cada usuario hace bind con su propia cuenta; no hace falta cuenta de servicio.'
+          : 'Una cuenta de servicio busca al usuario y luego se valida su contraseña.'}>
+          <select value={form.mode} onChange={set('mode')}>
+            {AD_MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+          </select>
+        </Field>
+
+        <Field label="Cifrado de la conexión">
+          <select value={form.security} onChange={set('security')}>
+            {AD_SECURITY.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+          </select>
+        </Field>
+        {form.security === 'none' && (
+          <div className="alert error small">
+            Sin cifrar, la contraseña de cada inicio de sesión viaja en texto plano por la red. Úsalo solo si el
+            controlador de dominio no admite StartTLS ni LDAPS.
+          </div>
+        )}
+
+        <Field label="URL del servidor">
+          <input className="mono" value={form.url} onChange={set('url')}
+            placeholder={form.security === 'ldaps' ? 'ldaps://dc.empresa.local:636' : 'ldap://dc.empresa.local'} />
+        </Field>
+
+        {isDirect ? (
+          <>
+            <Field label="Dominio" hint="NetBIOS (EMPRESA → EMPRESA\usuario) o DNS (empresa.com → usuario@empresa.com).">
+              <input value={form.domain} onChange={set('domain')} placeholder="EMPRESA" />
+            </Field>
+            <Field label="Base de búsqueda" hint="Opcional: si la indicas, se leen el nombre y el correo del usuario al iniciar sesión.">
+              <input className="mono" value={form.searchBase} onChange={set('searchBase')} placeholder="DC=empresa,DC=local" />
+            </Field>
+          </>
+        ) : (
+          <>
+            <Field label="Bind DN (cuenta de servicio)">
+              <input className="mono" value={form.bindDn} onChange={set('bindDn')} placeholder="CN=svc,OU=...,DC=..." />
+            </Field>
+            <Field
+              label="Contraseña de bind"
+              hint={data?.hasBindPassword ? 'Ya hay una guardada (cifrada). Déjala vacía para conservarla.' : 'Se guarda cifrada (AES-256-GCM).'}
+            >
+              <input type="password" value={form.bindPassword} onChange={set('bindPassword')}
+                autoComplete="new-password" placeholder={data?.hasBindPassword ? '•••••• (guardada)' : ''} />
+            </Field>
+            <Field label="Base de búsqueda">
+              <input className="mono" value={form.searchBase} onChange={set('searchBase')} placeholder="DC=empresa,DC=local" />
+            </Field>
+          </>
+        )}
+
+        <Field label="Filtro de usuario" hint="{{username}} se reemplaza por la cuenta (escapada).">
+          <input className="mono" value={form.userFilter} onChange={set('userFilter')} />
+        </Field>
+
+        {form.security !== 'none' && (
+          <label className="checkline">
+            <input type="checkbox" checked={form.tlsRejectUnauthorized} onChange={check('tlsRejectUnauthorized')} />
+            Validar certificado TLS
+          </label>
+        )}
+
+        <div className="row gap">
+          <button className="btn primary" disabled={busy}>Guardar</button>
+        </div>
+        <ResultLine result={msg} />
+
+        <dl className="meta-grid">
+          <div><dt>Origen</dt><dd>{data?.source === 'env' ? '.env (fallback)' : data?.source ?? 'sin definir'}</dd></div>
+          <div><dt>Última actualización</dt><dd>{fmtDate(data?.updatedAt)}</dd></div>
+        </dl>
+      </form>
+
+      <div className="card stack">
+        <SectionHead
+          title="Probar AD"
+          description="Valida un usuario y contraseña con la configuración GUARDADA. La contraseña no se guarda."
+        />
+        <div className="row gap">
+          <Field label="Usuario de AD">
+            <input value={testUser} autoComplete="off" onChange={(e) => setTestUser(e.target.value)} placeholder="DOMINIO\usuario" />
+          </Field>
+          <Field label="Contraseña">
+            <input type="password" value={testPass} autoComplete="new-password" onChange={(e) => setTestPass(e.target.value)} />
+          </Field>
+        </div>
+        <div className="row gap">
+          <button type="button" className="btn" onClick={doTest} disabled={busy || !testUser.trim() || !testPass}>
+            {busy ? 'Probando…' : 'Probar'}
+          </button>
+        </div>
+        <ResultLine result={test} />
+        {test?.ok && (test.fullName || test.email) && (
+          <div className="small muted">{test.fullName} {test.email && <span className="mono">· {test.email}</span>}</div>
+        )}
       </div>
-      <ResultLine result={msg} />
-      <ResultLine result={test} />
-
-      <dl className="meta-grid">
-        <div><dt>Origen</dt><dd>{data?.source ?? 'sin definir'}</dd></div>
-        <div><dt>Última actualización</dt><dd>{fmtDate(data?.updatedAt)}</dd></div>
-      </dl>
-    </form>
+    </div>
   );
 }
 
@@ -230,7 +328,7 @@ function SystemSection() {
           <dt>Uptime</dt>
           <dd>{health ? `${Math.floor(health.uptimeSecs / 60)} min` : '—'}</dd>
         </div>
-        <div><dt>Sesión</dt><dd className="mono">{user?.email}</dd></div>
+        <div><dt>Sesión</dt><dd className="mono">{user?.email ?? user?.username}</dd></div>
       </dl>
     </div>
   );
@@ -253,7 +351,7 @@ export default function SettingsPage() {
   const loadGcp = () => api.get('/settings/gcp').then(setGcp);
   useEffect(() => { loadAd(); loadGcp(); }, []);
 
-  const status = { ad: Boolean(ad?.url), gcp: Boolean(gcp?.configured) };
+  const status = { ad: Boolean(ad?.enabled && ad?.url), gcp: Boolean(gcp?.configured) };
 
   return (
     <div>
