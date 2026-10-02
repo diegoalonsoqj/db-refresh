@@ -16,7 +16,7 @@ Sistema web para **orquestar la restauración de backups en Cloud SQL de GCP**, 
 - **Programación in-app** (scheduler con `node-cron`), reemplaza el crontab del SO.
 - **Catálogo** de proyectos, instancias y buckets (N:N) administrable por UI/API.
 - **Módulo de settings**: configura AD/LDAP y sube el JSON de la service account de GCP en caliente (cifrados en la BD).
-- **Auth híbrida**: local (argon2id) + AD/LDAP, sesión por **JWT en cookie httpOnly**, **RBAC** (admin / operator / viewer).
+- **Auth híbrida**: local (argon2id) + AD/LDAP (usuarios AD dados de alta por un admin; bind directo `DOMINIO\usuario` o cuenta de servicio; StartTLS/LDAPS), login único, sesión por **JWT en cookie httpOnly**, **RBAC** (admin / operator / viewer).
 - **Hardening**: helmet, rate-limit de login, auditoría, gestión de usuarios, secretos fuera del repo.
 - **Frontend** React + Vite.
 
@@ -90,7 +90,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"   # 
 | `BASE_ADMIN_ENABLED` | Crear admin base al arrancar | `true` |
 | `BASE_ADMIN_EMAIL` | Email del admin base | `admin@dbrefresh.local` |
 | `BASE_ADMIN_PASSWORD` | Password inicial del admin base | `P4$$w0rD` |
-| `AD_DEFAULT_ROLE` | Rol de un usuario AD en su 1er login | `viewer` |
+| `AD_URL`, `AD_MODE`, `AD_DOMAIN`, `AD_SECURITY`, `AD_BASE_DN`, `AD_BIND_DN`, `AD_BIND_PASSWORD`, `AD_USER_FILTER`, `AD_TLS_REJECT_UNAUTHORIZED` | Fallback de AD si no hay config en Ajustes (ver `.env.example`) | — |
 | `AD_URL/AD_BASE_DN/AD_BIND_DN/AD_BIND_PASSWORD` | Fallback de AD (preferir el módulo de settings) | — |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Fallback de la SA (preferir el módulo de settings) | — |
 | `WORKER_ID` | Id del worker | `worker-<pid>` |
@@ -150,7 +150,8 @@ clave:   P4$$w0rD
 ### Configurar GCP y AD (como admin)
 
 1. **Ajustes → GCP Service Account**: sube el JSON de la SA o pégalo, y "Probar credenciales".
-2. **Ajustes → AD/LDAP** (opcional): rellena `url/baseDn/bindDn/password` y "Probar conexión". Al configurarlo, el login mostrará la pestaña *Active Directory*.
+2. **Ajustes → AD/LDAP** (opcional): habilita AD, elige el modo (**bind directo** con el dominio, sin cuenta de servicio, o **cuenta de servicio + búsqueda**), el cifrado (StartTLS recomendado / LDAPS / ninguno) y la URL; guarda y usa **Probar AD** con un usuario real. Lo guardado tiene prioridad sobre las variables `AD_*` del `.env`.
+3. **Usuarios → Nuevo usuario → tipo Active Directory**: da de alta la cuenta de red (`DOMINIO\usuario` o `usuario`, se guarda sin dominio) y su rol. Solo los usuarios AD dados de alta pueden entrar; nombre y correo se completan desde AD al iniciar sesión. El login es único: email (local) o usuario de red (AD).
 
 ## Flujo de uso
 

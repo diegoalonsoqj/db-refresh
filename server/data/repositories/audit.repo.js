@@ -11,7 +11,7 @@ export async function insertAudit({ actor, action, entity, metadata, ip }) {
 
 export async function listAudit({ limit = 100 } = {}) {
   const { rows } = await query(
-    `SELECT a.id, a.actor, u.email AS actor_email, a.action, a.entity,
+    `SELECT a.id, a.actor, COALESCE(u.email, u.username) AS actor_email, a.action, a.entity,
             a.metadata, a.ip_address, a.created_at
        FROM audit_log a
        LEFT JOIN app_users u ON u.id = a.actor

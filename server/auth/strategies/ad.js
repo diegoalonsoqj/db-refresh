@@ -1,75 +1,43 @@
-// Estrategia de autenticación AD/LDAP. La conexión se toma del MÓDULO DE SETTINGS
-// (settings.service.getAdCredentials -> app_settings, cifrado), no de env fijo.
-//
-// Flujo:
-//   1. bind de servicio (bindDn/bindPassword) para poder buscar.
-//   2. search bajo baseDn por sAMAccountName / userPrincipalName / mail.
-//   3. bind con el DN del usuario + su password (valida credenciales).
-//   4. upsert en app_users (auth_source='ad', ad_dn, rol por defecto la 1ª vez).
-import { Client } from 'ldapts';
-import { getAdCredentials } from '../../services/settings.service.js';
-import { upsertAdUser } from '../../data/repositories/users.repo.js';
-import { config } from '../../config/index.js';
-import { AuthError, DomainError } from '../../domain/errors.js';
+// Estrategia de autenticación AD/LDAP. Como en db-keeper, los usuarios de AD
+// deben existir antes en app_users (los da de alta un admin en Usuarios, tipo AD):
+// aquí solo se valida la contraseña contra el directorio con la config del
+// módulo de settings (BD, con fallback a env) y se refrescan nombre/correo.
+import { tryAuthenticateLdap } from '../ldap.js';
+import { getAdRuntimeConfig } from '../../services/settings.service.js';
+import { refreshAdProfile } from '../../data/repositories/users.repo.js';
+import { AuthError } from '../../domain/errors.js';
 import { logger } from '../../lib/logger.js';
 
-const TIMEOUT = 10_000;
-const INVALID = () => new AuthError('Credenciales inválidas', { code: 'INVALID_CREDENTIALS' });
+// Re-export para compatibilidad (tests y código previo lo importaban de aquí).
+export { escapeFilter } from '../ldap.js';
 
-// Escapa valores para filtros LDAP (RFC 4515) evitando inyección.
-export function escapeFilter(value) {
-  return String(value).replace(/[\\*()\x00]/g, (c) => `\\${c.charCodeAt(0).toString(16).padStart(2, '0')}`);
-}
-
-const first = (v) => (Array.isArray(v) ? v[0] : v);
-
-export async function verifyAd(username, password) {
-  const cfg = await getAdCredentials();
-  if (!cfg || !cfg.url) {
-    throw new DomainError('AD no está configurado (módulo de settings)', { code: 'AD_NOT_CONFIGURED' });
+/**
+ * Valida la contraseña de un usuario AD ya provisionado (`user` = fila de
+ * app_users con auth_source='ad'). Devuelve el usuario público actualizado o
+ * lanza AuthError (mensaje genérico; el motivo va en `code` para la auditoría).
+ */
+export async function verifyAd(user, password) {
+  const cfg = await getAdRuntimeConfig();
+  if (!cfg) {
+    throw new AuthError('Credenciales inválidas', { code: 'AD_NOT_CONFIGURED' });
   }
-  if (!username || !password) throw INVALID();
-
-  const svc = new Client({ url: cfg.url, timeout: TIMEOUT, connectTimeout: TIMEOUT });
-  let userDn;
-  let entry;
-  try {
-    // 1) bind de servicio
-    await svc.bind(cfg.bindDn, cfg.bindPassword);
-    // 2) buscar al usuario
-    const u = escapeFilter(username);
-    const { searchEntries } = await svc.search(cfg.baseDn, {
-      scope: 'sub',
-      filter: `(|(sAMAccountName=${u})(userPrincipalName=${u})(mail=${u}))`,
-      attributes: ['dn', 'mail', 'displayName', 'userPrincipalName'],
+  const r = await tryAuthenticateLdap(user.username, password, cfg);
+  if (!r.ok) {
+    // 'error' = no se pudo hablar con AD (red/TLS/config): se loguea en ldap.js y
+    // se responde igual que credenciales inválidas para no filtrar información.
+    throw new AuthError('Credenciales inválidas', {
+      code: r.reason === 'error' ? 'AD_UNAVAILABLE' : 'INVALID_CREDENTIALS',
     });
-    if (searchEntries.length === 0) throw INVALID();
-    entry = searchEntries[0];
-    userDn = entry.dn;
+  }
+
+  let updated = user;
+  try {
+    updated = (await refreshAdProfile(user.id, r.user)) ?? user;
   } catch (err) {
-    if (err instanceof AuthError) throw err;
-    // Fallo de bind de servicio / conexión: problema de configuración/infra.
-    throw new DomainError('No se pudo consultar el directorio AD (revisa la configuración)', {
-      code: 'AD_QUERY_FAILED',
-    });
-  } finally {
-    await svc.unbind().catch(() => {});
+    // p. ej. el correo del directorio ya lo usa otra cuenta: el login sigue siendo válido.
+    logger.warn({ userId: user.id, err: err.message }, 'Login AD: no se pudo refrescar el perfil');
   }
-
-  // 3) validar la password del usuario con un bind dedicado
-  const userClient = new Client({ url: cfg.url, timeout: TIMEOUT, connectTimeout: TIMEOUT });
-  try {
-    await userClient.bind(userDn, password);
-  } catch {
-    throw INVALID(); // password incorrecta
-  } finally {
-    await userClient.unbind().catch(() => {});
-  }
-
-  // 4) upsert del usuario en la app
-  const email = first(entry.mail) || first(entry.userPrincipalName) || username;
-  const fullName = first(entry.displayName) || null;
-  const user = await upsertAdUser({ email, fullName, adDn: userDn, role: config.auth.adDefaultRole });
-  logger.info({ email, adDn: userDn }, 'Login AD correcto');
-  return user;
+  const { ad_dn, ...publicUser } = updated;
+  logger.info({ userId: user.id, username: user.username }, 'Login AD correcto');
+  return publicUser;
 }

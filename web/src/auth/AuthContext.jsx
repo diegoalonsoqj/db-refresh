@@ -14,8 +14,9 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = async (email, password, source = 'local') => {
-    const d = await api.post('/auth/login', { email, password, source });
+  // Login único: email (local) o cuenta de red (AD); el backend decide el tipo.
+  const login = async (username, password) => {
+    const d = await api.post('/auth/login', { username, password });
     setUser(d.user);
     return d.user;
   };

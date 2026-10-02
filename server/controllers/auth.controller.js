@@ -24,15 +24,17 @@ export async function methods(_req, res, next) {
 }
 
 export async function login(req, res, next) {
-  const { email, password, source } = req.body ?? {};
+  const { username, email, password } = req.body ?? {};
+  const identifier = username ?? email;
   try {
-    const { user, token } = await authService.login({ email, password, source });
+    const { user, token } = await authService.login({ username, email, password });
     res.cookie(AUTH_COOKIE, token, cookieOptions());
-    audit({ req, actor: user.id, action: 'auth.login', metadata: { source: source ?? 'local' } });
+    audit({ req, actor: user.id, action: 'auth.login', metadata: { source: user.auth_source } });
     res.json({ user });
   } catch (err) {
-    // Auditar el intento fallido (sin password). email es un identificador, no secreto.
-    audit({ req, actor: null, action: 'auth.login_failed', metadata: { source: source ?? 'local', email, reason: err.code } });
+    // Auditar el intento fallido (sin password). El identificador no es secreto;
+    // `reason` distingue p. ej. AD_UNAVAILABLE de INVALID_CREDENTIALS.
+    audit({ req, actor: null, action: 'auth.login_failed', metadata: { identifier, reason: err.code } });
     next(err);
   }
 }

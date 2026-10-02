@@ -83,18 +83,34 @@ CREATE INDEX IF NOT EXISTS idx_post_scripts_instance ON instance_post_scripts (i
 -- --- Usuarios / auth -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS app_users (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  email         text NOT NULL UNIQUE,
+  email         text UNIQUE,  -- obligatorio en local; opcional en ad (se lee del directorio)
+  username      text,         -- cuenta de AD (sAMAccountName, sin dominio); NULL en local
   full_name     text,
   role          text NOT NULL DEFAULT 'operator',   -- admin | operator | viewer
   auth_source   auth_source NOT NULL DEFAULT 'local',
   password_hash text,        -- solo local
-  ad_dn         text,        -- solo ad
+  ad_dn         text,        -- solo ad (DN leído del directorio; NULL en bind directo)
   is_active     boolean NOT NULL DEFAULT true,
   last_login_at timestamptz,
   created_at    timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT chk_auth_local CHECK (auth_source <> 'local' OR password_hash IS NOT NULL),
-  CONSTRAINT chk_auth_ad    CHECK (auth_source <> 'ad'    OR ad_dn IS NOT NULL)
+  CONSTRAINT chk_auth_ad    CHECK (auth_source <> 'ad'    OR username IS NOT NULL)
 );
+
+-- Migración idempotente: usuarios AD pre-provisionados por un admin (como en
+-- db-keeper). Se identifican por `username` (sAMAccountName); email pasa a ser
+-- opcional para ellos. Los AD auto-creados antes se rellenan desde su email.
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS username text;
+ALTER TABLE app_users ALTER COLUMN email DROP NOT NULL;
+UPDATE app_users SET username = lower(split_part(email, '@', 1))
+ WHERE auth_source = 'ad' AND username IS NULL AND email IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_app_users_username ON app_users (lower(username));
+DO $$ BEGIN
+  ALTER TABLE app_users DROP CONSTRAINT IF EXISTS chk_auth_ad;
+  ALTER TABLE app_users ADD  CONSTRAINT chk_auth_ad    CHECK (auth_source <> 'ad'    OR username IS NOT NULL);
+  ALTER TABLE app_users DROP CONSTRAINT IF EXISTS chk_local_email;
+  ALTER TABLE app_users ADD  CONSTRAINT chk_local_email CHECK (auth_source <> 'local' OR email IS NOT NULL);
+END $$;
 
 -- --- Jobs de restauración --------------------------------------------------
 CREATE TABLE IF NOT EXISTS restore_jobs (
