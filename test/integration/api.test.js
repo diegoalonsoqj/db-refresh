@@ -145,3 +145,46 @@ test('RBAC: viewer no puede crear proyecto (403)', async (t) => {
   const { status } = await req('POST', '/projects', { cookie, body: { projectId: 'x' } });
   assert.equal(status, 403);
 });
+
+test('post-scripts por instancia (admin): CRUD, validación, 409 y RBAC viewer 403', async (t) => {
+  if (!dbOk) return t.skip('BD no disponible');
+  const { cookie } = await login(ADMIN, PW);
+  const proj = await req('POST', '/projects', { cookie, body: { projectId: `${PROJ}-ps` } });
+  const inst = await req('POST', '/instances', {
+    cookie,
+    body: {
+      projectRef: proj.data.id, instanceName: 'itest-mssql', engine: 'sqlserver',
+      dbHost: '10.0.0.1', adminUser: 'sqlserver', secretRef: 'env:ITEST_NOPE',
+    },
+  });
+  assert.equal(inst.status, 201);
+  const base = `/instances/${inst.data.id}/post-scripts`;
+  try {
+    const body = { name: 'permisos', sqlText: "PRINT 'x'\nGO\nSELECT 1", sortOrder: 10 };
+    const created = await req('POST', base, { cookie, body });
+    assert.equal(created.status, 201);
+    assert.equal(created.data.database_name, null);
+
+    assert.equal((await req('POST', base, { cookie, body })).status, 409);
+    assert.equal((await req('POST', base, { cookie, body: { name: 'v', sqlText: '\nGO\n' } })).status, 422);
+    assert.equal((await req('POST', base, { cookie, body: { name: 'v', sqlText: 'SELECT 1', databaseName: 'x;DROP' } })).status, 422);
+
+    const upd = await req('PUT', `${base}/${created.data.id}`, {
+      cookie, body: { ...body, databaseName: 'msdb', isActive: false },
+    });
+    assert.equal(upd.status, 200);
+    assert.equal(upd.data.database_name, 'msdb');
+
+    const list = await req('GET', base, { cookie });
+    assert.equal(list.data.length, 1);
+
+    const viewer = await login(VIEWER, PW);
+    assert.equal((await req('GET', base, { cookie: viewer.cookie })).status, 403);
+
+    assert.equal((await req('DELETE', `${base}/${created.data.id}`, { cookie })).status, 204);
+  } finally {
+    // ON DELETE CASCADE limpia los post-scripts que queden.
+    await req('DELETE', `/instances/${inst.data.id}`, { cookie });
+    await req('DELETE', `/projects/${proj.data.id}`, { cookie });
+  }
+});

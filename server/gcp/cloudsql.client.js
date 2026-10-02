@@ -110,7 +110,8 @@ export async function getOperation({ project, operation }) {
 export async function listOperations({ project, instance }) {
   try {
     const client = await getClient();
-    const { data } = await client.operations.list({ project, instance });
+    // Vienen ordenadas de más reciente a más antigua; las en curso están arriba.
+    const { data } = await client.operations.list({ project, instance, maxResults: 50 });
     return data.items ?? [];
   } catch (err) {
     throw new InfraError(`Fallo al listar operaciones de ${instance}`, { code: 'OP_LIST_FAILED', cause: err });
@@ -139,4 +140,33 @@ export async function waitForOperation(
     await new Promise((r) => setTimeout(r, intervalMs));
   }
   return { ok: false, error: { code: 'TIMEOUT', message: `Timeout esperando ${operation}` } };
+}
+
+/** Filtra las operaciones que aún no terminaron (PENDING/RUNNING). Pura. */
+export function activeOperations(items = []) {
+  return items.filter((op) => op.status === 'PENDING' || op.status === 'RUNNING');
+}
+
+/**
+ * Pre-check: espera a que la instancia no tenga operaciones en curso (backup
+ * automático, otro import, mantenimiento...). Cloud SQL rechaza un import si hay
+ * otra operación corriendo, y descubrirlo DESPUÉS del DROP deja la BD borrada.
+ * @returns { ok: true } | { ok: false, busy: [{ name, operationType, status }] }
+ */
+export async function waitForInstanceIdle(
+  { project, instance },
+  { timeoutSeconds = 900, pollIntervalSeconds = 30, onWait } = {},
+) {
+  const deadline = Date.now() + timeoutSeconds * 1000;
+  for (;;) {
+    const busy = activeOperations(await listOperations({ project, instance })).map((op) => ({
+      name: op.name,
+      operationType: op.operationType,
+      status: op.status,
+    }));
+    if (busy.length === 0) return { ok: true };
+    if (Date.now() >= deadline) return { ok: false, busy };
+    if (onWait) await onWait(busy);
+    await new Promise((r) => setTimeout(r, pollIntervalSeconds * 1000));
+  }
 }
