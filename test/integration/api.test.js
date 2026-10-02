@@ -188,3 +188,40 @@ test('post-scripts por instancia (admin): CRUD, validación, 409 y RBAC viewer 4
     await req('DELETE', `/projects/${proj.data.id}`, { cookie });
   }
 });
+
+test('usuarios AD: alta por admin (normaliza dominio), duplicado 409, validaciones y login', async (t) => {
+  if (!dbOk) return t.skip('BD no disponible');
+  const { cookie } = await login(ADMIN, PW);
+  const uname = `itest.ad${Date.now() % 100000}`;
+
+  const created = await req('POST', '/users', {
+    cookie, body: { authSource: 'ad', username: `EMPRESA\\${uname.toUpperCase()}`, role: 'operator' },
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.data.username, uname);
+  assert.equal(created.data.auth_source, 'ad');
+  assert.equal(created.data.email, null);
+  try {
+    assert.equal((await req('POST', '/users', { cookie, body: { authSource: 'ad', username: `${uname}@empresa.com` } })).status, 409);
+    assert.equal((await req('POST', '/users', { cookie, body: { authSource: 'ad', username: 'x', password: 'abcdefghijk' } })).status, 422);
+    assert.equal((await req('POST', '/users', { cookie, body: { authSource: 'ad', username: 'a*b' } })).status, 422);
+
+    // Sin AD válido (o con contraseña errónea) el login AD responde 401 genérico.
+    const res = await fetch(`${base}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: `EMPRESA\\${uname}`, password: 'no-es-la-clave' }),
+    });
+    assert.equal(res.status, 401);
+
+    // Un usuario local entra con el campo `username` (login único).
+    const local = await fetch(`${base}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: ADMIN, password: PW }),
+    });
+    assert.equal(local.status, 200);
+  } finally {
+    await req('DELETE', `/users/${created.data.id}`, { cookie });
+  }
+});

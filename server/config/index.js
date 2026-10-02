@@ -51,9 +51,6 @@ export const config = {
     jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '8h',
     // maxAge de la cookie de sesión, derivado del mismo TTL que el JWT.
     sessionMaxAgeMs: durationMs(process.env.JWT_EXPIRES_IN ?? '8h', 8 * 3600e3),
-    // Rol asignado a un usuario de AD la PRIMERA vez que inicia sesión
-    // (luego un admin puede cambiarlo). Least-privilege por defecto.
-    adDefaultRole: process.env.AD_DEFAULT_ROLE ?? 'viewer',
     // Admin base garantizado en la BD al arrancar (para no quedar fuera).
     // OJO: password por defecto conocido; cambiar en cuanto sea posible.
     baseAdmin: {
@@ -61,11 +58,19 @@ export const config = {
       email: process.env.BASE_ADMIN_EMAIL ?? 'admin@dbrefresh.local',
       password: process.env.BASE_ADMIN_PASSWORD ?? 'P4$$w0rD',
     },
+    // Fallback de AD si no hay config en la BD (Ajustes > AD / LDAP la pisa).
     ad: {
       url: process.env.AD_URL,
-      baseDn: process.env.AD_BASE_DN,
-      bindDn: process.env.AD_BIND_DN,
+      mode: process.env.AD_MODE,                 // direct | search
+      domain: process.env.AD_DOMAIN,             // modo direct: EMPRESA o empresa.com
+      security: process.env.AD_SECURITY,         // starttls | ldaps | none
+      baseDn: process.env.AD_BASE_DN,            // searchBase
+      bindDn: process.env.AD_BIND_DN,            // modo search: cuenta de servicio
       bindPassword: process.env.AD_BIND_PASSWORD,
+      userFilter: process.env.AD_USER_FILTER,
+      tlsRejectUnauthorized: process.env.AD_TLS_REJECT_UNAUTHORIZED
+        ? process.env.AD_TLS_REJECT_UNAUTHORIZED !== 'false'
+        : undefined,
     },
   },
 
