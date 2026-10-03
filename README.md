@@ -127,7 +127,7 @@ Abre **http://localhost:5173**.
 
 ### Producción (PM2)
 
-`ecosystem.config.cjs` define 3 procesos (`db-refresh-api`, `db-refresh-worker`, `db-refresh-scheduler`) con autorestart, tope de **2 GB por proceso** (`max_memory_restart: 2G`, heap V8 en 1792 MB para que el GC actúe antes) y logs en `logs/`.
+`ecosystem.config.cjs` define 3 procesos (`db-refresh-api`, `db-refresh-worker`, `db-refresh-scheduler`) con autorestart, tope de **2 GB en total** para un VPS de 4 GB (API 1 GB, worker 768 MB, scheduler 256 MB vía `max_memory_restart`; heap V8 ~25% por debajo para que el GC actúe antes; el resto queda para el SO y PostgreSQL) y logs en `logs/`.
 
 ```bash
 npm install -g pm2
