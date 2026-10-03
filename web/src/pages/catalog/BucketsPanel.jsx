@@ -70,8 +70,14 @@ export default function BucketsPanel({ projects, onChange }) {
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.project_id}</option>)}
               </select>
             </label>
-            <label>Nombre del bucket<input value={form.bucketName} onChange={set('bucketName')} autoFocus required /></label>
-            <label>Prefijo base<input className="mono" value={form.basePrefix} onChange={set('basePrefix')} placeholder="pg/ (opcional)" /></label>
+            <label>Nombre del bucket
+              <input className="mono" value={form.bucketName} onChange={set('bucketName')} placeholder="mi-bucket" autoFocus required />
+              <span className="muted small">Solo el nombre, sin <span className="mono">gs://</span>. Si pegas la ruta completa (<span className="mono">gs://mi-bucket/carpeta</span>) se separa sola.</span>
+            </label>
+            <label>Prefijo base (carpeta)
+              <input className="mono" value={form.basePrefix} onChange={set('basePrefix')} placeholder="carpeta/subcarpeta (opcional)" />
+              <span className="muted small">Carpeta donde están los backups. Se listan los archivos de ese nivel (no de subcarpetas). Vacío = raíz del bucket.</span>
+            </label>
             <label>Descripción<input value={form.description} onChange={set('description')} /></label>
             <label className="checkline">
               <input type="checkbox" checked={form.isActive} onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))} />

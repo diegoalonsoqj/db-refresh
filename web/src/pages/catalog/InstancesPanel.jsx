@@ -20,8 +20,8 @@ export default function InstancesPanel({ projects, buckets }) {
   const openNew = () => { setForm({ ...empty, projectRef: projects[0]?.id ?? '' }); setEditing({}); setFormErr(null); };
   const openEdit = (i) => {
     setForm({
-      projectRef: i.project_ref, instanceName: i.instance_name, engine: i.engine, dbHost: i.db_host,
-      dbPort: i.db_port ?? '', adminUser: i.admin_user, secretRef: i.secret_ref, isActive: i.is_active,
+      projectRef: i.project_ref, instanceName: i.instance_name, engine: i.engine, dbHost: i.db_host ?? '',
+      dbPort: i.db_port ?? '', adminUser: i.admin_user ?? '', secretRef: i.secret_ref ?? '', isActive: i.is_active,
     });
     setEditing(i); setFormErr(null);
   };
@@ -60,7 +60,9 @@ export default function InstancesPanel({ projects, buckets }) {
             <tr key={i.id}>
               <td className="mono">{i.instance_name}</td>
               <td>{i.engine}</td>
-              <td className="mono small muted">{i.db_host}{i.db_port ? `:${i.db_port}` : ''}</td>
+              <td className="mono small muted">
+                {i.db_host ? `${i.db_host}${i.db_port ? `:${i.db_port}` : ''}` : <span title="Sin conexión SQL: solo restore (sin post-scripts)">—</span>}
+              </td>
               <td>{i.project_id}</td>
               <td><span className={`pill ${i.is_active ? 'on' : ''}`}>{i.is_active ? 'sí' : 'no'}</span></td>
               <td className="actions">
@@ -88,16 +90,21 @@ export default function InstancesPanel({ projects, buckets }) {
                 {ENGINES.map((e) => <option key={e} value={e}>{e}</option>)}
               </select>
             </label>
+            <div className="muted small">
+              <strong>Conexión SQL — solo para post-scripts (opcional).</strong> El restore (drop + import del
+              backup) usa el Cloud SQL Admin API con la service account de Ajustes y no la necesita. Rellena
+              los tres campos o déjalos vacíos.
+            </div>
             <div className="row gap">
-              <label style={{ flex: 2 }}>Host<input className="mono" value={form.dbHost} onChange={set('dbHost')} required /></label>
+              <label style={{ flex: 2 }}>Host<input className="mono" value={form.dbHost} onChange={set('dbHost')} placeholder="IP privada (opc.)" /></label>
               <label style={{ flex: 1 }}>Puerto<input type="number" value={form.dbPort} onChange={set('dbPort')} placeholder="opc." /></label>
             </div>
-            <label>Usuario admin<input value={form.adminUser} onChange={set('adminUser')} required /></label>
+            <label>Usuario admin<input value={form.adminUser} onChange={set('adminUser')} placeholder="opc." /></label>
             <label>Secret ref (referencia al password, NO el password)
-              <input className="mono" value={form.secretRef} onChange={set('secretRef')} placeholder="sm://projects/<p>/secrets/<s>" required />
+              <input className="mono" value={form.secretRef} onChange={set('secretRef')} placeholder="sm://projects/<p>/secrets/<s> (opc.)" />
               <span className="muted small">
                 <span className="mono">sm://projects/&lt;p&gt;/secrets/&lt;s&gt;[/versions/&lt;v&gt;]</span> (Secret Manager) o{' '}
-                <span className="mono">env:NOMBRE</span> (variable de entorno, dev). Se usa para los post-scripts.
+                <span className="mono">env:NOMBRE</span> (variable de entorno, dev).
               </span>
             </label>
             <label className="checkline">

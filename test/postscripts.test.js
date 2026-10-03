@@ -6,6 +6,8 @@ import { parseSecretRef, resolveSecret } from '../server/lib/secrets.js';
 import { activeOperations } from '../server/gcp/cloudsql.client.js';
 import { EngineAdapter } from '../server/engines/EngineAdapter.js';
 import { DomainError } from '../server/domain/errors.js';
+import { missingSqlCredentials } from '../server/domain/instance.js';
+import { SqlServerAdapter } from '../server/engines/sqlserver/SqlServerAdapter.js';
 
 test('splitSqlBatches: separa por GO en línea sola (LF, CRLF, mayúsculas, ;)', () => {
   const sql = "PRINT 'a';\nGO\nEXEC x;\r\n  go  \r\nSELECT 1;\nGO;\n";
@@ -65,4 +67,22 @@ test('EngineAdapter: post-scripts en motor sin soporte fallan; sin scripts es no
   ctx.postScripts = [{ name: 's', sql_text: 'SELECT 1' }];
   await assert.rejects(new EngineAdapter(ctx).verifyPostScriptsConnection(), DomainError);
   await assert.rejects(new EngineAdapter(ctx).runPostScripts(), DomainError);
+});
+
+test('missingSqlCredentials: lista lo que falta para conectar por SQL', () => {
+  assert.deepEqual(missingSqlCredentials({ db_host: 'h', admin_user: 'u', secret_ref: 'env:X' }), []);
+  assert.deepEqual(missingSqlCredentials({ db_host: 'h' }), ['admin_user', 'secret_ref']);
+  assert.deepEqual(missingSqlCredentials(null), ['db_host', 'admin_user', 'secret_ref']);
+});
+
+test('SqlServerAdapter: post-scripts sin conexión SQL fallan en el pre-check sin conectar', async () => {
+  const ctx = {
+    instance: { instance_name: 'i1', db_host: null, admin_user: null, secret_ref: null },
+    postScripts: [{ name: 's', sql_text: 'SELECT 1' }],
+    log: async () => {},
+  };
+  await assert.rejects(
+    new SqlServerAdapter(ctx).verifyPostScriptsConnection(),
+    (err) => err instanceof DomainError && err.code === 'POST_SCRIPTS_NO_CREDENTIALS',
+  );
 });
