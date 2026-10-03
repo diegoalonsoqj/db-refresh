@@ -40,7 +40,7 @@ export async function runJob(job, logger) {
 
   let adapter;
   try {
-    adapter = createAdapter(job.engine, ctx);
+    adapter = createAdapter(job.engine, ctx, job.method ?? 'import');
   } catch (err) {
     await log('error', err.message);
     await jobsRepo.finishJob(job.id, 'failed', err.message);
@@ -48,7 +48,8 @@ export async function runJob(job, logger) {
   }
 
   const items = await jobsRepo.getJobItems(job.id);
-  await log('info', `Inicio de la restauración: ${items.length} BD.`);
+  const methodLabel = job.method === 'native' ? 'restore nativo (pg_restore/psql)' : 'import de Cloud SQL';
+  await log('info', `Inicio de la restauración: ${items.length} BD, ${methodLabel}.`);
 
   // 0) Pre-check: todos los backups existen + instancia libre + conexión para
   //    post-scripts. Si falla, el job termina sin haber borrado nada (todos los
@@ -56,7 +57,7 @@ export async function runJob(job, logger) {
   try {
     for (const item of items) await adapter.validateBackup(item.backup_file);
     await log('info', `Pre-check: ${items.length} backup(s) validados en GCS.`);
-    await adapter.preflight();
+    await adapter.preflight(items);
   } catch (err) {
     const reason = describeGcpError(err.cause);
     const message = reason ? `${err.message} — ${reason}` : err.message;
@@ -88,7 +89,7 @@ export async function runJob(job, logger) {
 
       // 2) DROP destructivo del destino
       await jobsRepo.updateItemStatus(item.id, 'dropping');
-      await adapter.prepareTarget(item.target_db);
+      await adapter.prepareTarget(item.target_db, item);
 
       // 3) Import + espera
       await jobsRepo.updateItemStatus(item.id, 'importing', { markStarted: true });
