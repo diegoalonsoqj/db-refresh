@@ -5,10 +5,10 @@
 //   pm2 save                      # persiste la lista de procesos
 //   pm2 startup                   # (una vez) registra PM2 como servicio del SO -> arranca al reiniciar el host
 //
-// Memoria: VPS de 4 GB -> 2 GB para la app en total (los otros 2 GB quedan para el SO y
-// PostgreSQL). Reparto: API 1 GB, worker 768 MB, scheduler 256 MB. En cada proceso el heap
-// de V8 se limita ~25% por debajo del umbral para que el GC actúe antes; `max_memory_restart`
-// (RSS = heap + buffers nativos) es solo la red de seguridad ante una fuga real.
+// Memoria: tope de 2 GB por proceso (VPS de 4 GB habitual; se amplía, p.ej. a 8 GB, en
+// periodos de carga). El heap de V8 se limita por debajo (1792 MB) para que el GC actúe antes
+// del umbral de PM2; `max_memory_restart` (RSS = heap + buffers nativos) es solo la red de
+// seguridad y reinicia únicamente si de verdad se superan los 2 GB.
 // Uso normal esperado: decenas a pocos cientos de MB por proceso.
 
 const memory = (maxRss, heapMb) => ({
@@ -36,7 +36,7 @@ module.exports = {
     {
       ...common,
       name: 'db-refresh-api',
-      ...memory('1G', 768),
+      ...memory('2G', 1792),
       script: 'server/index.js',
       out_file: 'logs/api.out.log',
       error_file: 'logs/api.err.log',
@@ -45,7 +45,7 @@ module.exports = {
     {
       ...common,
       name: 'db-refresh-worker',
-      ...memory('768M', 576),
+      ...memory('2G', 1792),
       script: 'server/jobs/worker.js',
       out_file: 'logs/worker.out.log',
       error_file: 'logs/worker.err.log',
@@ -56,7 +56,7 @@ module.exports = {
     {
       ...common,
       name: 'db-refresh-scheduler',
-      ...memory('256M', 192),
+      ...memory('2G', 1792),
       script: 'server/jobs/scheduler.js',
       out_file: 'logs/scheduler.out.log',
       error_file: 'logs/scheduler.err.log',
