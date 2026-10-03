@@ -36,30 +36,9 @@ export class SqlServerAdapter extends EngineAdapter {
   }
 
   // DROP destructivo previo al restore (databases.delete del Admin API).
+  // El import del .bak crea la BD: basta con eliminarla si ya existe.
   async prepareTarget(targetDb) {
-    await this.ctx.log('info', `🧹 Eliminando BD existente: ${targetDb}`);
-    const op = await csql.deleteDatabase({
-      project: this.ctx.project,
-      instance: this.ctx.instance.instance_name,
-      database: targetDb,
-    });
-    if (op === null) {
-      await this.ctx.log('info', `ℹ️ La BD ${targetDb} no existía; nada que eliminar.`);
-      return;
-    }
-    const res = await csql.waitForOperation(
-      { project: this.ctx.project, operation: op },
-      {
-        timeoutSeconds: config.worker.operationTimeoutSeconds,
-        pollIntervalSeconds: config.worker.operationPollIntervalSeconds,
-      },
-    );
-    if (!res.ok) {
-      throw new InfraError(`No se pudo eliminar la BD ${targetDb}`, {
-        code: 'DROP_FAILED',
-        cause: res.error,
-      });
-    }
+    await this.dropIfExists(targetDb);
   }
 
   async restore(item) {

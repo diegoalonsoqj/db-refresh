@@ -65,7 +65,8 @@ export default function LaunchPage() {
   // Carpeta actual (base del bucket + subcarpetas): es la ruta que se lista y la que usa el job.
   const bucketPath = basePath ? [basePath, ...subPath].join('/') : '';
 
-  const existsDb = (name) => !!dbs?.some((d) => d.name.toLowerCase() === name.trim().toLowerCase());
+  const findDb = (name) => dbs?.find((d) => d.name.toLowerCase() === name.trim().toLowerCase());
+  const existsDb = (name) => !!findDb(name);
   const replaced = dbs ? rows.filter((r) => r.targetDb && existsDb(r.targetDb)) : [];
 
   const loadFiles = async (isCurrent = () => true) => {
@@ -105,11 +106,23 @@ export default function LaunchPage() {
       if (prev.find((r) => r.backupFile === fileName)) {
         return prev.filter((r) => r.backupFile !== fileName);
       }
-      return [...prev, { backupFile: fileName, targetDb: fileName.replace(/\.(bak|sql|gz)$/gi, ''), importUser: '' }];
+      // Sugerencia: el nombre del archivo; si coincide con una BD existente, se preselecciona esa.
+      const suggested = fileName.replace(/\.(bak|sql|gz)$/gi, '');
+      const match = findDb(suggested);
+      return [...prev, { backupFile: fileName, targetDb: match?.name ?? suggested, isNew: !match, importUser: '' }];
     });
 
   const setRow = (fileName, key, val) =>
     setRows((prev) => prev.map((r) => (r.backupFile === fileName ? { ...r, [key]: val } : r)));
+
+  // Select de BD destino: una existente (se reemplaza) o "nueva" (se escribe el nombre).
+  const NEW_DB = '__new__';
+  const chooseDb = (fileName, value) =>
+    setRows((prev) => prev.map((r) => {
+      if (r.backupFile !== fileName) return r;
+      if (value === NEW_DB) return { ...r, isNew: true, targetDb: r.isNew ? r.targetDb : '' };
+      return { ...r, isNew: false, targetDb: value };
+    }));
 
   const submit = async (e) => {
     e.preventDefault();
@@ -230,12 +243,10 @@ export default function LaunchPage() {
         {files?.length > 0 && (
           <div className="card">
             <div className="muted small">
-              Selecciona backups y define la BD destino: elige una existente (se reemplaza) o escribe un nombre nuevo.
+              Selecciona backups y elige la BD destino: una existente de la instancia (se elimina y se reemplaza) o
+              «➕ Nueva BD» para escribir el nombre.
               {owners.supported && ' El owner (PostgreSQL) es el usuario con el que se importa: los objetos quedan a su nombre.'}
             </div>
-            <datalist id="instance-dbs">
-              {(dbs ?? []).map((d) => <option key={d.name} value={d.name} />)}
-            </datalist>
             <table className="table">
               <thead>
                 <tr>
@@ -254,13 +265,25 @@ export default function LaunchPage() {
                       <td>
                         {r && (
                           <div className="row gap">
-                            <input
-                              className="mono"
-                              list="instance-dbs"
-                              value={r.targetDb}
-                              onChange={(e) => setRow(f.fileName, 'targetDb', e.target.value)}
-                              required
-                            />
+                            {dbs && (
+                              <select value={r.isNew ? NEW_DB : r.targetDb} onChange={(e) => chooseDb(f.fileName, e.target.value)}>
+                                <option value={NEW_DB}>➕ Nueva BD…</option>
+                                {dbs.length > 0 && (
+                                  <optgroup label={`BDs de la instancia (${dbs.length})`}>
+                                    {dbs.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
+                                  </optgroup>
+                                )}
+                              </select>
+                            )}
+                            {(r.isNew || !dbs) && (
+                              <input
+                                className="mono"
+                                placeholder="nombre de la BD"
+                                value={r.targetDb}
+                                onChange={(e) => setRow(f.fileName, 'targetDb', e.target.value)}
+                                required
+                              />
+                            )}
                             {dbs && r.targetDb.trim() && (existsDb(r.targetDb)
                               ? <span className="pill warn" title="La BD existe: se eliminará y se restaurará">existe · se reemplaza</span>
                               : <span className="pill on">nueva</span>)}
