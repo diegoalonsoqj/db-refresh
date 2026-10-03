@@ -3,11 +3,14 @@
 import { DomainError, InfraError } from '../domain/errors.js';
 import * as csql from '../gcp/cloudsql.client.js';
 import { config } from '../config/index.js';
+import { splitSqlBatches } from '../lib/sqlBatches.js';
+import { sqlRunnerFor } from './sql/runners.js';
+import { resolveSqlConnection } from './sql/connection.js';
 
 /**
  * Contrato que todo adaptador de motor debe cumplir.
  * `ctx` es el contexto de restauración: { instance, project, bucketPath, log, postScripts }
- *   - instance:    fila de gcp_instances (con project_id, db_host, admin_user, secret_ref...)
+ *   - instance:    fila de gcp_instances (con project_id, db_host, db_port, credential_ref...)
  *   - project:     project_id de GCP
  *   - log:         (level, message, {itemId}) => Promise  para emitir eventos de progreso
  *   - postScripts: filas activas de instance_post_scripts, en orden de ejecución
@@ -114,16 +117,67 @@ export class EngineAdapter {
     }
   }
 
-  /** Verifica que se pueden ejecutar los post-scripts. Por defecto: motor sin soporte. */
-  async verifyPostScriptsConnection() {
-    throw new DomainError(
-      `Post-scripts aún no soportados para el motor de ${this.ctx.instance.instance_name}`,
-      { code: 'POST_SCRIPTS_UNSUPPORTED' },
-    );
+  /** Cliente SQL del motor de la instancia (null = el motor no admite post-scripts). */
+  get sqlRunner() {
+    return sqlRunnerFor(this.ctx.instance?.engine);
   }
 
-  /** Hook post-restore (scripts SQL, jobs). Por defecto: nada si no hay scripts. */
+  _requireRunner() {
+    if (!this.sqlRunner) {
+      throw new DomainError(
+        `Post-scripts no soportados para el motor de ${this.ctx.instance.instance_name}`,
+        { code: 'POST_SCRIPTS_UNSUPPORTED' },
+      );
+    }
+    return this.sqlRunner;
+  }
+
+  /**
+   * Pre-check de post-scripts: conexión SQL configurada (host + credencial) y
+   * login + SELECT 1 en la BD por defecto. No se prueba la database_name de cada
+   * script porque suele ser una BD que aún no existe (se crea con el restore).
+   */
+  async verifyPostScriptsConnection() {
+    const runner = this._requireRunner();
+    const conn = await resolveSqlConnection(this.ctx.instance);
+    await runner.withConnection(conn, null, (handle) => runner.runBatch(handle, 'SELECT 1'));
+  }
+
+  /**
+   * Ejecuta los post-scripts activos en orden (equivale a run_extra_scripts del
+   * script original). Cada script abre su conexión (en su database_name) y corre
+   * sus lotes en secuencia (`GO` separa lotes; en PG/MySQL suele haber uno solo);
+   * los PRINT / RAISE NOTICE van al log del job. El primer fallo detiene el resto:
+   * un script posterior puede depender del anterior y el job queda en failed.
+   */
   async runPostScripts() {
-    if (this.postScripts.length) await this.verifyPostScriptsConnection();
+    if (!this.postScripts.length) return;
+    const runner = this._requireRunner();
+    const conn = await resolveSqlConnection(this.ctx.instance);
+    for (const script of this.postScripts) {
+      const batches = splitSqlBatches(script.sql_text);
+      const where = script.database_name ?? runner.defaultDatabase ?? 'BD por defecto';
+      await this.ctx.log('info', `Post-script "${script.name}" en ${where}: ${batches.length} lote(s).`);
+      try {
+        await runner.withConnection(conn, script.database_name, async (handle) => {
+          for (const [i, batch] of batches.entries()) {
+            try {
+              await runner.runBatch(handle, batch, { onInfo: (msg) => this.ctx.log('info', `  ${msg}`) });
+            } catch (err) {
+              throw new InfraError(`lote ${i + 1}/${batches.length}: ${err.message}`, {
+                code: 'POST_SCRIPT_FAILED',
+                cause: err,
+              });
+            }
+          }
+        });
+      } catch (err) {
+        throw new InfraError(`Post-script "${script.name}" falló: ${err.message}`, {
+          code: 'POST_SCRIPT_FAILED',
+          cause: err,
+        });
+      }
+      await this.ctx.log('info', `Post-script "${script.name}" completado.`);
+    }
   }
 }

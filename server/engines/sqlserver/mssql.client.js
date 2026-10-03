@@ -1,17 +1,18 @@
 // Cliente SQL Server (mssql/tedious) para lo que el Admin API no cubre: los
-// post-scripts SQL. Conecta con el usuario admin de la instancia del catálogo y
-// el password resuelto desde secret_ref (Secret Manager / env), nunca logueado.
+// post-scripts SQL. Recibe una conexión ya resuelta (engines/sql/connection.js).
 import sql from 'mssql';
 import { InfraError } from '../../domain/errors.js';
-import { resolveSecret } from '../../lib/secrets.js';
 import { config } from '../../config/index.js';
 
-async function connectionConfig(instance, database) {
-  return {
-    server: instance.db_host,
-    port: instance.db_port ?? 1433,
-    user: instance.admin_user,
-    password: await resolveSecret(instance.secret_ref),
+export const defaultDatabase = 'master';
+
+/** Abre una conexión (pool de 1) y la cierra siempre al terminar `fn`. */
+export async function withConnection(conn, database, fn) {
+  const pool = new sql.ConnectionPool({
+    server: conn.host,
+    port: conn.port,
+    user: conn.user,
+    password: conn.password,
     ...(database ? { database } : {}),
     // Igual que el script original (Encrypt=yes;TrustServerCertificate=yes):
     // Cloud SQL usa un certificado propio de la instancia, no de una CA pública.
@@ -19,18 +20,12 @@ async function connectionConfig(instance, database) {
     connectionTimeout: 15_000,
     requestTimeout: config.worker.postScriptTimeoutMs,
     pool: { max: 1, min: 0 },
-  };
-}
-
-/** Abre una conexión (pool de 1) y la cierra siempre al terminar `fn`. */
-export async function withConnection(instance, database, fn) {
-  const cfg = await connectionConfig(instance, database);
-  const pool = new sql.ConnectionPool(cfg);
+  });
   try {
     await pool.connect();
   } catch (err) {
     throw new InfraError(
-      `No se pudo conectar a SQL Server ${cfg.server}:${cfg.port}${database ? `/${database}` : ''}: ${err.message}`,
+      `No se pudo conectar a SQL Server ${conn.host}:${conn.port}${database ? `/${database}` : ''}: ${err.message}`,
       { code: 'SQL_CONNECT_FAILED', cause: err },
     );
   }

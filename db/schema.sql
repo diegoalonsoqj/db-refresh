@@ -30,25 +30,84 @@ CREATE TABLE IF NOT EXISTS gcp_projects (
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 
+-- Credenciales SQL reutilizables (usuario + contraseña) para lo que el Admin API
+-- no cubre: post-scripts y, más adelante, restores nativos. La contraseña va
+-- cifrada at-rest (AES-256-GCM, master key en APP_ENCRYPTION_KEY) o como
+-- referencia a Secret Manager; nunca en claro ni devuelta por la API.
+CREATE TABLE IF NOT EXISTS sql_credentials (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name         text NOT NULL UNIQUE,
+  engine       engine_type NOT NULL,
+  username     text NOT NULL,
+  secret_kind  text NOT NULL CHECK (secret_kind IN ('stored', 'ref')),
+  password_enc bytea,           -- secret_kind = 'stored'
+  secret_ref   text,            -- secret_kind = 'ref' (sm://... | env:NOMBRE)
+  description  text,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  updated_at   timestamptz NOT NULL DEFAULT now(),
+  updated_by   uuid,            -- FK a app_users (ON DELETE SET NULL) al final del esquema
+  CONSTRAINT chk_cred_secret CHECK (
+    (secret_kind = 'stored' AND password_enc IS NOT NULL) OR
+    (secret_kind = 'ref'    AND secret_ref   IS NOT NULL)
+  )
+);
+
 CREATE TABLE IF NOT EXISTS gcp_instances (
-  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  project_ref   uuid NOT NULL REFERENCES gcp_projects(id) ON DELETE RESTRICT,
-  instance_name text NOT NULL,
-  engine        engine_type NOT NULL,
-  -- Conexión SQL: solo para post-scripts (el restore va por el Admin API).
-  db_host       text,
-  db_port       int,
-  admin_user    text,
-  secret_ref    text,                   -- referencia a Secret Manager, NUNCA el password
-  is_active     boolean NOT NULL DEFAULT true,
-  created_at    timestamptz NOT NULL DEFAULT now(),
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_ref    uuid NOT NULL REFERENCES gcp_projects(id) ON DELETE RESTRICT,
+  instance_name  text NOT NULL,
+  engine         engine_type NOT NULL,
+  -- Conexión SQL (IP privada + credencial): solo para post-scripts; el restore
+  -- va por el Admin API y no la usa.
+  db_host        text,
+  db_port        int,
+  credential_ref uuid REFERENCES sql_credentials(id) ON DELETE RESTRICT,
+  is_active      boolean NOT NULL DEFAULT true,
+  created_at     timestamptz NOT NULL DEFAULT now(),
   UNIQUE (project_ref, instance_name)
 );
 
--- Migración idempotente: la conexión SQL pasa a ser opcional (solo post-scripts).
-ALTER TABLE gcp_instances ALTER COLUMN db_host    DROP NOT NULL;
-ALTER TABLE gcp_instances ALTER COLUMN admin_user DROP NOT NULL;
-ALTER TABLE gcp_instances ALTER COLUMN secret_ref DROP NOT NULL;
+-- Migraciones idempotentes de la conexión SQL de instancias:
+-- 1) opcional (solo post-scripts); 2) usuario/secret_ref sueltos -> credencial.
+ALTER TABLE gcp_instances ALTER COLUMN db_host DROP NOT NULL;
+ALTER TABLE gcp_instances ADD COLUMN IF NOT EXISTS credential_ref uuid
+  REFERENCES sql_credentials(id) ON DELETE RESTRICT;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema = current_schema() AND table_name = 'gcp_instances'
+                AND column_name = 'admin_user') THEN
+    -- Cada instancia con usuario + secret_ref VÁLIDO (sm://... | env:NOMBRE) pasa a
+    -- tener su propia credencial. Un secret_ref con otro contenido (p.ej. una
+    -- contraseña escrita en claro antes de validar el formato) NO se migra: se
+    -- descarta al eliminar la columna y hay que crear la credencial de nuevo.
+    INSERT INTO sql_credentials (name, engine, username, secret_kind, secret_ref, description)
+    SELECT 'migrada-' || i.instance_name || '-' || left(i.id::text, 8), i.engine,
+           i.admin_user, 'ref', i.secret_ref, 'Migrada automáticamente desde la instancia ' || i.instance_name
+      FROM gcp_instances i
+     WHERE i.admin_user IS NOT NULL AND i.credential_ref IS NULL
+       AND i.secret_ref ~ '^(sm://projects/[^/]+/secrets/[^/]+(/versions/[^/]+)?|env:[A-Za-z_][A-Za-z0-9_]*)$'
+    ON CONFLICT (name) DO NOTHING;
+    UPDATE gcp_instances i
+       SET credential_ref = c.id
+      FROM sql_credentials c
+     WHERE c.name = 'migrada-' || i.instance_name || '-' || left(i.id::text, 8)
+       AND i.credential_ref IS NULL;
+    ALTER TABLE gcp_instances DROP COLUMN admin_user;
+    ALTER TABLE gcp_instances DROP COLUMN secret_ref;
+  END IF;
+END $$;
+-- Saneamiento idempotente: credenciales migradas cuyo secret_ref no es una
+-- referencia válida (contenían un valor en claro) se desvinculan y se eliminan.
+DO $$ BEGIN
+  UPDATE gcp_instances SET credential_ref = NULL
+   WHERE credential_ref IN (
+     SELECT id FROM sql_credentials
+      WHERE name LIKE 'migrada-%' AND secret_kind = 'ref'
+        AND secret_ref !~ '^(sm://projects/[^/]+/secrets/[^/]+(/versions/[^/]+)?|env:[A-Za-z_][A-Za-z0-9_]*)$');
+  DELETE FROM sql_credentials
+   WHERE name LIKE 'migrada-%' AND secret_kind = 'ref'
+     AND secret_ref !~ '^(sm://projects/[^/]+/secrets/[^/]+(/versions/[^/]+)?|env:[A-Za-z_][A-Za-z0-9_]*)$';
+END $$;
 
 CREATE TABLE IF NOT EXISTS gcp_buckets (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -222,5 +281,8 @@ DO $$ BEGIN
     FOREIGN KEY (created_by)   REFERENCES app_users(id) ON DELETE SET NULL;
   ALTER TABLE app_settings       DROP CONSTRAINT IF EXISTS app_settings_updated_by_fkey;
   ALTER TABLE app_settings       ADD  CONSTRAINT app_settings_updated_by_fkey
+    FOREIGN KEY (updated_by)   REFERENCES app_users(id) ON DELETE SET NULL;
+  ALTER TABLE sql_credentials    DROP CONSTRAINT IF EXISTS sql_credentials_updated_by_fkey;
+  ALTER TABLE sql_credentials    ADD  CONSTRAINT sql_credentials_updated_by_fkey
     FOREIGN KEY (updated_by)   REFERENCES app_users(id) ON DELETE SET NULL;
 END $$;
