@@ -152,6 +152,9 @@ CREATE TABLE IF NOT EXISTS restore_job_items (
   UNIQUE (job_ref, seq)
 );
 CREATE INDEX IF NOT EXISTS idx_items_job ON restore_job_items (job_ref);
+-- Migración idempotente: owner del import (PostgreSQL, importContext.importUser).
+-- NULL = usuario por defecto de Cloud SQL.
+ALTER TABLE restore_job_items ADD COLUMN IF NOT EXISTS import_user text;
 
 CREATE TABLE IF NOT EXISTS job_events (
   id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

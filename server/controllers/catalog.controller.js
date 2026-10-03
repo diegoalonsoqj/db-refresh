@@ -1,5 +1,6 @@
 // Controladores thin del catálogo (proyectos, instancias, buckets, N:N).
 import * as catalog from '../services/catalog.service.js';
+import * as live from '../services/instanceLive.service.js';
 
 const wrap = (fn) => async (req, res, next) => {
   try {
@@ -28,6 +29,9 @@ export const deleteInstance = wrap(async (req, res) => {
   await catalog.deleteInstance(req.params.id);
   res.status(204).end();
 });
+// En vivo contra Cloud SQL (Admin API): BDs y usuarios para el formulario de restore.
+export const listInstanceDatabases = wrap(async (req, res) => res.json(await live.listDatabases(req.params.id)));
+export const listInstanceUsers = wrap(async (req, res) => res.json(await live.listUsers(req.params.id)));
 
 // --- Buckets ---
 export const listBuckets = wrap(async (_req, res) => res.json(await catalog.listBuckets()));
