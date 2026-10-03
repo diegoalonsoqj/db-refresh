@@ -49,13 +49,13 @@ export class EngineAdapter {
   async dropIfExists(targetDb) {
     const where = { project: this.ctx.project, instance: this.ctx.instance.instance_name, database: targetDb };
     if (!(await csql.databaseExists(where))) {
-      await this.ctx.log('info', `ℹ️ La BD ${targetDb} no existe en la instancia: se creará con el restore.`);
+      await this.ctx.log('info', `La BD ${targetDb} no existe en la instancia; se creará con la restauración.`);
       return;
     }
-    await this.ctx.log('info', `🧹 Eliminando BD existente: ${targetDb}`);
+    await this.ctx.log('info', `Eliminando la BD existente ${targetDb}.`);
     const op = await csql.deleteDatabase(where);
     if (op === null) {
-      await this.ctx.log('info', `ℹ️ La BD ${targetDb} no existía; nada que eliminar.`);
+      await this.ctx.log('info', `La BD ${targetDb} no existía; no hay nada que eliminar.`);
       return;
     }
     const res = await csql.waitForOperation(
@@ -84,9 +84,9 @@ export class EngineAdapter {
   async preflight() {
     await this.waitInstanceIdle();
     if (this.postScripts.length) {
-      await this.ctx.log('info', `🔌 Verificando conexión para ${this.postScripts.length} post-script(s)...`);
+      await this.ctx.log('info', `Verificando la conexión SQL para ${this.postScripts.length} post-script(s).`);
       await this.verifyPostScriptsConnection();
-      await this.ctx.log('info', '✅ Conexión para post-scripts OK.');
+      await this.ctx.log('info', 'Conexión SQL para post-scripts verificada.');
     }
   }
 
@@ -100,7 +100,7 @@ export class EngineAdapter {
         onWait: (busy) =>
           this.ctx.log(
             'warning',
-            `⏳ Instancia ocupada (${busy.map((o) => `${o.operationType} ${o.status}`).join(', ')}); esperando...`,
+            `Instancia ocupada (${busy.map((o) => `${o.operationType} ${o.status}`).join(', ')}); en espera.`,
             { itemId },
           ),
       },

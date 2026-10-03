@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { useList } from '../hooks/useList.js';
 import Modal from '../components/Modal.jsx';
+import { IconClose } from '../components/icons.jsx';
 
 const empty = { instanceRef: '', bucketRef: '', cronExpr: '0 3 * * *', mapping: [{ backupFile: '', targetDb: '' }], isActive: true };
 
@@ -121,7 +122,7 @@ export default function SchedulesPage() {
                   {isPg && (
                     <input className="mono" style={{ flex: 1 }} placeholder="owner (opc.)" title="Usuario con el que se importa (PostgreSQL)" value={m.importUser ?? ''} onChange={(e) => setMap(idx, 'importUser', e.target.value)} />
                   )}
-                  <button type="button" className="btn ghost small" onClick={() => delMap(idx)} disabled={form.mapping.length === 1}>✕</button>
+                  <button type="button" className="btn ghost small icon-btn" onClick={() => delMap(idx)} disabled={form.mapping.length === 1} aria-label="Quitar fila"><IconClose /></button>
                 </div>
               ))}
             </div>

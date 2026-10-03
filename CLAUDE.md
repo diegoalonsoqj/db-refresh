@@ -97,6 +97,7 @@ Flujo de `runJob`: **pre-check** → (por item: re-chequeo de instancia libre si
 Esos dos proyectos (en `D:\DEVS\`) son la **referencia visual**; al tocar layout/UI, copiar su patrón:
 - **Shell**: sidebar colapsable con toggle **circular montado a caballo del borde derecho** (abajo; chevron que rota 180°), estado persistido en `localStorage` (`dbrefresh.sidebarCollapsed`). `.app` es `height:100vh; overflow:hidden`: el header queda fijo y scrollea solo `.app-main`.
 - **Header**: `.app-header` (56px, misma altura que `.sidebar-head`) con el **usuario arriba a la derecha** (`UserMenu`: avatar con iniciales + nombre + rol; desplegable con email, cambiar contraseña y cerrar sesión; cierra con click fuera o Escape).
+- **Tono empresarial, sin emojis**: ni en la UI ni en los mensajes del log del job (`job_events`). Iconos solo SVG de línea de `components/icons.jsx` (`currentColor`). El estado lo da el nivel (INFO/WARN/ERROR) y los colores, no símbolos. El log en vivo es una consola con columnas hora · nivel · mensaje (`cleanMessage` limpia emojis de eventos antiguos).
 - **Ajustes**: `settings-layout` = **nav vertical de secciones** + card por sección, con **punto de estado** por sección (verde = configurada). Campos con `label` + `hint`.
 
 ## Hardening de seguridad (Fase 5)
