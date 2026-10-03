@@ -84,3 +84,27 @@ export const IconChevronLeft = () => (
 export const IconChevronDown = () => (
   <Svg><path d="m6 9 6 6 6-6" /></Svg>
 );
+
+export const IconClose = () => (
+  <Svg><path d="M18 6 6 18M6 6l12 12" /></Svg>
+);
+
+export const IconArrowLeft = () => (
+  <Svg><path d="M19 12H5M12 19l-7-7 7-7" /></Svg>
+);
+
+export const IconArrowUp = () => (
+  <Svg><path d="M12 19V5M5 12l7-7 7 7" /></Svg>
+);
+
+export const IconRefresh = () => (
+  <Svg><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6" /></Svg>
+);
+
+export const IconFolder = () => (
+  <Svg><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></Svg>
+);
+
+export const IconAlert = () => (
+  <Svg><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01" /></Svg>
+);

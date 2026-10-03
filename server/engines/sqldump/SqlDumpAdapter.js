@@ -48,7 +48,7 @@ export class SqlDumpAdapter extends EngineAdapter {
   }
 
   async _createEmptyDatabase(targetDb) {
-    await this.ctx.log('info', `📦 Creando BD vacía: ${targetDb}`);
+    await this.ctx.log('info', `Creando la BD vacía ${targetDb}.`);
     const op = await csql.createDatabase({
       project: this.ctx.project,
       instance: this.ctx.instance.instance_name,
@@ -69,7 +69,7 @@ export class SqlDumpAdapter extends EngineAdapter {
       throw new DomainError(`Backup desaparecido: ${item.backup_file}`, { code: 'BACKUP_NOT_FOUND' });
     }
 
-    await this.ctx.log('info', `🚀 Importando ${item.backup_file} → ${item.target_db}`, {
+    await this.ctx.log('info', `Importando ${item.backup_file} en la BD ${item.target_db}.`, {
       itemId: item.id,
     });
 
@@ -82,17 +82,17 @@ export class SqlDumpAdapter extends EngineAdapter {
       importUser: item.import_user ?? undefined, // solo PG (validado al lanzar)
     });
     if (item.import_user) {
-      await this.ctx.log('info', `👤 Owner del import: ${item.import_user}`, { itemId: item.id });
+      await this.ctx.log('info', `Owner del import: ${item.import_user}.`, { itemId: item.id });
     }
 
     await this.ctx.reportOperation?.(item.id, operation);
-    await this.ctx.log('info', `ℹ️ Operation ID (${item.target_db}): ${operation}`, {
+    await this.ctx.log('info', `Operación de Cloud SQL (${item.target_db}): ${operation}`, {
       itemId: item.id,
     });
 
     return this._wait(operation, {
       onPoll: (status) =>
-        this.ctx.log('info', `ℹ️ Estado ${item.target_db}: ${status}`, { itemId: item.id }),
+        this.ctx.log('info', `Estado de ${item.target_db}: ${status}`, { itemId: item.id }),
     });
   }
 

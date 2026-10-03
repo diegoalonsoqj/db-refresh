@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { api } from '../api/client.js';
+import { IconServer } from '../components/icons.jsx';
 
 export default function LoginPage() {
   const { user, login } = useAuth();
@@ -36,7 +37,7 @@ export default function LoginPage() {
   return (
     <div className="center">
       <form className="card login" onSubmit={submit}>
-        <h1>🗄️ db-refresh</h1>
+        <h1 className="login-brand"><IconServer /> db-refresh</h1>
         <p className="muted">Inicia sesión para continuar</p>
 
         <label>

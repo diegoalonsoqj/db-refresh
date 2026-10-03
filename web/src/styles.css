@@ -319,6 +319,8 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 .alert { padding: .7rem .9rem; border-radius: 8px; margin: .5rem 0; border: 1px solid transparent; }
 .alert.error { background: rgba(255, 92, 92, .12); color: #ffb3b3; border-color: rgba(255,92,92,.4); }
 .alert.warn { background: rgba(240, 180, 41, .12); color: #ffdf9e; border-color: rgba(240,180,41,.4); }
+.alert.success { background: rgba(46, 204, 113, .12); color: #a6f0c6; border-color: rgba(46,204,113,.4); }
+.alert svg { width: 16px; height: 16px; vertical-align: -3px; margin-right: .35rem; }
 
 /* --- Rows --- */
 .row { display: flex; align-items: center; gap: 1rem; }
@@ -424,6 +426,17 @@ input[type="checkbox"] { width: 16px; height: 16px; }
   font-family: var(--mono);
   font-size: .82rem;
 }
-.logline { padding: .1rem 0; white-space: pre-wrap; }
-.logline.warning { color: #ffdf9e; }
-.logline.error { color: #ffb3b3; }
+.logline { display: grid; grid-template-columns: max-content 3.4rem 1fr; gap: .75rem; padding: .15rem 0; align-items: baseline; }
+.log-time { color: var(--muted); font-size: .76rem; }
+.log-level { font-size: .68rem; font-weight: 600; letter-spacing: .06em; color: var(--muted); }
+.log-level.warning { color: var(--warn); }
+.log-level.error { color: var(--err); }
+.log-msg { white-space: pre-wrap; word-break: break-word; }
+.logline.warning .log-msg { color: #ffdf9e; }
+.logline.error .log-msg { color: #ffb3b3; }
+
+/* Botones con icono SVG */
+.btn svg { width: 15px; height: 15px; vertical-align: -3px; }
+.btn.icon-btn { padding-inline: .45rem; }
+.login-brand { display: flex; align-items: center; gap: .5rem; }
+.login-brand svg { width: 24px; height: 24px; }

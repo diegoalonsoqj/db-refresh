@@ -2,6 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../api/client.js';
 import StatusBadge from '../components/StatusBadge.jsx';
+import { IconArrowLeft } from '../components/icons.jsx';
+
+const LEVEL_LABEL = { info: 'INFO', warning: 'WARN', error: 'ERROR' };
+// Los eventos antiguos se guardaron con emojis y separadores '===': se limpian al mostrarlos.
+const EMOJI_RE = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}]/gu;
+const cleanMessage = (m) =>
+  String(m).replace(EMOJI_RE, '').replace(/^[\s=]+|[\s=]+$/g, '').replace(/\s{2,}/g, ' ');
 
 const TERMINAL = new Set(['succeeded', 'failed', 'cancelled']);
 
@@ -55,7 +62,7 @@ export default function JobDetailPage() {
         <h2>
           Job <span className="mono">{job.id.slice(0, 8)}</span> <StatusBadge status={job.status} />
         </h2>
-        <Link className="btn ghost" to="/jobs">← Historial</Link>
+        <Link className="btn ghost" to="/jobs"><IconArrowLeft /> Historial</Link>
       </div>
       {job.error_message && <div className="alert error">{job.error_message}</div>}
 
@@ -84,7 +91,9 @@ export default function JobDetailPage() {
         ) : (
           events.map((e, i) => (
             <div key={i} className={`logline ${e.level}`}>
-              <span className="muted small">{new Date(e.created_at).toLocaleTimeString()}</span> {e.message}
+              <span className="log-time">{new Date(e.created_at).toLocaleTimeString()}</span>
+              <span className={`log-level ${e.level}`}>{LEVEL_LABEL[e.level] ?? e.level}</span>
+              <span className="log-msg">{cleanMessage(e.message)}</span>
             </div>
           ))
         )}

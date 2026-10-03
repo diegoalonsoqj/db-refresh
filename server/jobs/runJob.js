@@ -48,20 +48,20 @@ export async function runJob(job, logger) {
   }
 
   const items = await jobsRepo.getJobItems(job.id);
-  await log('info', `=== 🔰 Inicio de restauración (${items.length} BD) ===`);
+  await log('info', `Inicio de la restauración: ${items.length} BD.`);
 
   // 0) Pre-check: todos los backups existen + instancia libre + conexión para
   //    post-scripts. Si falla, el job termina sin haber borrado nada (todos los
   //    items quedan como fallidos), como hacía el script original.
   try {
     for (const item of items) await adapter.validateBackup(item.backup_file);
-    await log('info', `✅ ${items.length} backup(s) validados en GCS.`);
+    await log('info', `Pre-check: ${items.length} backup(s) validados en GCS.`);
     await adapter.preflight();
   } catch (err) {
     const reason = describeGcpError(err.cause);
     const message = reason ? `${err.message} — ${reason}` : err.message;
     logger?.error({ err, jobId: job.id }, 'Pre-check fallido');
-    await log('error', `❌ Pre-check fallido, no se toca ninguna BD: ${message}`);
+    await log('error', `Pre-check fallido; no se ha modificado ninguna BD: ${message}`);
     for (const item of items) {
       await jobsRepo.updateItemStatus(item.id, 'failed', {
         errorMessage: `Pre-check: ${message}`,
@@ -69,7 +69,7 @@ export async function runJob(job, logger) {
       });
     }
     await jobsRepo.finishJob(job.id, 'failed', `Pre-check: ${message}`);
-    await log('info', '=== 🏁 Proceso completado ===');
+    await log('info', 'Proceso finalizado.');
     return;
   }
 
@@ -96,13 +96,13 @@ export async function runJob(job, logger) {
 
       if (res.ok) {
         await jobsRepo.updateItemStatus(item.id, 'succeeded', { markFinished: true });
-        await log('info', `✅ Restauración OK: ${item.target_db}`, { itemId: item.id });
+        await log('info', `Restauración completada: ${item.target_db}.`, { itemId: item.id });
       } else {
         allOk = false;
         const msg = describeGcpError(res.error) || JSON.stringify(res.error ?? {});
         firstError ??= `${item.target_db}: ${msg}`;
         await jobsRepo.updateItemStatus(item.id, 'failed', { errorMessage: msg, markFinished: true });
-        await log('error', `❌ Restauración fallida: ${item.target_db} — ${msg}`, { itemId: item.id });
+        await log('error', `Restauración fallida: ${item.target_db}: ${msg}`, { itemId: item.id });
       }
     } catch (err) {
       allOk = false;
@@ -116,7 +116,7 @@ export async function runJob(job, logger) {
         errorMessage: message,
         markFinished: true,
       });
-      await log(domain ? 'warning' : 'error', `❌ ${item.target_db}: ${message}`, {
+      await log(domain ? 'warning' : 'error', `${item.target_db}: ${message}`, {
         itemId: item.id,
       });
     }
@@ -124,20 +124,20 @@ export async function runJob(job, logger) {
 
   // 4) Post-scripts solo si TODO salió OK (igual que el script original)
   if (allOk && adapter.postScripts.length === 0) {
-    await log('info', 'ℹ️ Sin post-scripts configurados para la instancia.');
+    await log('info', 'La instancia no tiene post-scripts configurados.');
   } else if (allOk) {
     try {
-      await log('info', `ℹ️ Todas las restauraciones OK. Ejecutando ${adapter.postScripts.length} post-script(s)...`);
+      await log('info', `Restauraciones completadas. Ejecutando ${adapter.postScripts.length} post-script(s).`);
       await adapter.runPostScripts();
     } catch (err) {
       allOk = false;
       firstError ??= `Post-scripts: ${err.message}`;
-      await log('error', `❌ Post-scripts fallaron: ${err.message}`);
+      await log('error', `Los post-scripts fallaron: ${err.message}`);
     }
   } else {
-    await log('warning', '⚠️ No se ejecutan post-scripts: hubo restauraciones fallidas.');
+    await log('warning', 'No se ejecutan los post-scripts: hubo restauraciones fallidas.');
   }
 
   await jobsRepo.finishJob(job.id, allOk ? 'succeeded' : 'failed', allOk ? null : (firstError ?? 'Ver eventos del job'));
-  await log('info', '=== 🏁 Proceso completado ===');
+  await log('info', 'Proceso finalizado.');
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { useAuth } from '../auth/AuthContext.jsx';
+import { IconAlert, IconArrowUp, IconFolder, IconRefresh } from '../components/icons.jsx';
 
 // Extensiones que lista cada motor (deben coincidir con acceptedExtensions del adaptador).
 const EXTENSIONS = { sqlserver: '.bak', postgres: '.sql / .gz', mysql: '.sql / .gz' };
@@ -147,7 +148,7 @@ export default function LaunchPage() {
     <div>
       <h2>Lanzar restauración</h2>
       <div className="alert warn">
-        ⚠️ La restauración es destructiva: si la BD de destino existe, se elimina antes de importar.
+        <IconAlert /> La restauración es destructiva: si la BD de destino existe, se elimina antes de importar.
       </div>
       {error && <div className="alert error">{error}</div>}
 
@@ -211,7 +212,7 @@ export default function LaunchPage() {
               </span>
             ))}
             <button type="button" className="btn ghost small" onClick={() => loadFiles()} disabled={loadingFiles}>
-              {loadingFiles ? 'Listando…' : '↻ Recargar'}
+              <IconRefresh /> {loadingFiles ? 'Listando…' : 'Recargar'}
             </button>
           </div>
         )}
@@ -221,11 +222,11 @@ export default function LaunchPage() {
             <div className="muted small">Carpetas</div>
             <ul className="folder-list">
               {subPath.length > 0 && (
-                <li><button type="button" className="btn ghost small" onClick={() => setSubPath(subPath.slice(0, -1))}>⬆ ..</button></li>
+                <li><button type="button" className="btn ghost small" onClick={() => setSubPath(subPath.slice(0, -1))}><IconArrowUp /> Subir</button></li>
               )}
               {folders.map((f) => (
                 <li key={f}>
-                  <button type="button" className="btn ghost small mono" onClick={() => setSubPath([...subPath, f])}>📁 {f}/</button>
+                  <button type="button" className="btn ghost small mono" onClick={() => setSubPath([...subPath, f])}><IconFolder /> {f}</button>
                 </li>
               ))}
             </ul>
@@ -244,7 +245,7 @@ export default function LaunchPage() {
           <div className="card">
             <div className="muted small">
               Selecciona backups y elige la BD destino: una existente de la instancia (se elimina y se reemplaza) o
-              «➕ Nueva BD» para escribir el nombre.
+              «Nueva BD» para escribir el nombre.
               {owners.supported && ' El owner (PostgreSQL) es el usuario con el que se importa: los objetos quedan a su nombre.'}
             </div>
             <table className="table">
@@ -267,7 +268,7 @@ export default function LaunchPage() {
                           <div className="row gap">
                             {dbs && (
                               <select value={r.isNew ? NEW_DB : r.targetDb} onChange={(e) => chooseDb(f.fileName, e.target.value)}>
-                                <option value={NEW_DB}>➕ Nueva BD…</option>
+                                <option value={NEW_DB}>Nueva BD…</option>
                                 {dbs.length > 0 && (
                                   <optgroup label={`BDs de la instancia (${dbs.length})`}>
                                     {dbs.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}

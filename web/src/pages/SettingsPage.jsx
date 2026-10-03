@@ -5,9 +5,8 @@ import { useAuth } from '../auth/AuthContext.jsx';
 function ResultLine({ result }) {
   if (!result) return null;
   return (
-    <div className={`alert ${result.ok ? 'warn' : 'error'} result`}>
-      {result.ok ? '✅ ' : '❌ '}
-      {result.message || result.error || (result.ok ? 'OK' : 'Falló')}
+    <div className={`alert ${result.ok ? 'success' : 'error'} result`}>
+      {result.message || result.error || (result.ok ? 'Prueba correcta' : 'La prueba falló')}
       {result.clientEmail && <div className="small mono">{result.clientEmail}</div>}
     </div>
   );
