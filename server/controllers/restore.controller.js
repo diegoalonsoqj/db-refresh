@@ -68,19 +68,28 @@ export async function streamJob(req, res, next) {
       Connection: 'keep-alive',
     });
 
+    // Envía cada evento una sola vez y en orden (ids crecientes): descarta los ya
+    // enviados por el backlog o duplicados del bus.
+    let lastSent = Number.parseInt(req.headers['last-event-id'] ?? '0', 10) || 0;
     const send = (event) => {
+      const id = Number(event.id);
+      if (id <= lastSent) return;
+      lastSent = id;
       res.write(`id: ${event.id}\n`);
       res.write(`event: ${event.level}\n`);
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     };
 
-    // 1) reproducir eventos ya ocurridos (reconexión)
-    const lastId = Number.parseInt(req.headers['last-event-id'] ?? '0', 10) || 0;
-    const backlog = await getEventsSince(jobId, lastId);
-    backlog.forEach(send);
+    // 1) suscribirse antes de leer el historial, para no perder eventos entre ambos pasos
+    const pending = [];
+    let replaying = true;
+    const unsubscribe = subscribe(jobId, (event) => (replaying ? pending.push(event) : send(event)));
 
-    // 2) suscribirse a los nuevos
-    const unsubscribe = subscribe(jobId, send);
+    // 2) reproducir lo ya ocurrido (reconexión / apertura tardía) y luego lo que llegó mientras
+    const backlog = await getEventsSince(jobId, lastSent);
+    backlog.forEach(send);
+    replaying = false;
+    pending.sort((a, b) => Number(a.id) - Number(b.id)).forEach(send);
 
     const keepAlive = setInterval(() => res.write(': ping\n\n'), 15_000);
 

@@ -4,6 +4,7 @@ import { logger } from './lib/logger.js';
 import { closePool } from './data/pool.js';
 import { ensureBaseAdmin } from './auth/bootstrap.js';
 import { createApp } from './app.js';
+import { stopListener } from './jobs/progress.js';
 
 const app = createApp();
 
@@ -19,6 +20,7 @@ const server = app.listen(config.port, () => {
 async function shutdown(signal) {
   logger.info({ signal }, 'Apagando API...');
   server.close(async () => {
+    await stopListener();
     await closePool();
     process.exit(0);
   });
