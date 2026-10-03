@@ -203,7 +203,7 @@ export default function LaunchPage() {
       </div>
       {error && <div className="alert error">{error}</div>}
 
-      <form onSubmit={submit} className="stack">
+      <form onSubmit={submit} className="stack stack-wide">
         <label>
           Instancia
           <select value={instanceId} onChange={(e) => setInstanceId(e.target.value)} required>
@@ -327,10 +327,23 @@ export default function LaunchPage() {
               «Nueva BD» para escribir el nombre.
               {native && ' Con alcance «Esquema» solo se reemplaza ese esquema dentro de una BD existente.'}
               {owners.supported && ' El owner es el rol con el que se restaura: los objetos quedan a su nombre.'}
-              {orphansOn && (orphansReady
-                ? ' «Usuarios huérfanos»: tras restaurar cada BD, remapea sus usuarios al login del mismo nombre (los que no tengan login se reportan) y, si se elige, asigna el owner de la BD.'
-                : ` La corrección de usuarios huérfanos no está disponible: ${logins.reason}.`)}
+              {orphansOn && orphansReady && ' «Corregir huérfanos»: tras restaurar la BD, remapea sus usuarios al login del mismo nombre (los que no tengan login se reportan) y, si se elige, asigna el owner de la BD.'}
             </div>
+            {orphansOn && !orphansReady && (
+              <div className="alert warn small">
+                La corrección de usuarios huérfanos no está disponible: {logins.reason}.{' '}
+                {user?.role === 'admin'
+                  ? <>Configura la IP privada y la credencial de la instancia en <Link to="/catalog">Catálogo</Link> → Instancias.</>
+                  : 'Pide a un administrador que configure la conexión SQL de la instancia.'}
+              </div>
+            )}
+            {orphansOn && orphansReady && rows.length > 1 && (
+              <div className="row gap">
+                <button type="button" className="btn ghost small" onClick={() => setAllOrphans(!allOrphans)}>
+                  {allOrphans ? 'Desmarcar «Corregir huérfanos» en todas' : 'Marcar «Corregir huérfanos» en todas'}
+                </button>
+              </div>
+            )}
             <div className="table-scroll">
             <table className="table">
               <thead>
@@ -339,15 +352,7 @@ export default function LaunchPage() {
                   {native && <th>Alcance</th>}
                   <th>BD destino</th>
                   {owners.supported && <th>Owner</th>}
-                  {orphansOn && (
-                    <th title={orphansReady ? 'Tras restaurar, remapea los usuarios de BD a su login' : logins.reason}>
-                      <label className="checkline">
-                        <input type="checkbox" checked={allOrphans} disabled={!orphansReady || !rows.length}
-                          onChange={(e) => setAllOrphans(e.target.checked)} />
-                        Usuarios huérfanos
-                      </label>
-                    </th>
-                  )}
+                  {orphansOn && <th>Usuarios huérfanos</th>}
                 </tr>
               </thead>
               <tbody>
@@ -428,11 +433,12 @@ export default function LaunchPage() {
                         <td>
                           {r && (
                             <div className="stack-tight">
-                              <label className="checkline small">
+                              <label className="checkline small" title={orphansReady ? undefined : logins.reason}>
                                 <input type="checkbox" checked={r.fixOrphans} disabled={!orphansReady}
                                   onChange={(e) => setRow(f.fileName, 'fixOrphans', e.target.checked)} />
-                                Corregir
+                                Corregir huérfanos
                               </label>
+                              {!orphansReady && <span className="muted small">Requiere conexión SQL</span>}
                               {r.fixOrphans && (
                                 <select value={r.dbOwner} onChange={(e) => setRow(f.fileName, 'dbOwner', e.target.value)}
                                   title="Login a asignar como owner si el owner de la BD quedó huérfano">

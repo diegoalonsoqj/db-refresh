@@ -443,4 +443,8 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 .table td.actions .btn { white-space: nowrap; }
 .stack-tight { display: flex; flex-direction: column; gap: .35rem; }
 .table-scroll { overflow-x: auto; }
-.table-scroll .table input, .table-scroll .table select { min-width: 9rem; }
+.table-scroll .table input:not([type="checkbox"]):not([type="radio"]), .table-scroll .table select { min-width: 9rem; }
+.checkline input[type="checkbox"] { width: auto; min-width: 0; flex: 0 0 auto; }
+/* Lanzar restore: la tabla de backups necesita más ancho que un formulario normal. */
+.stack.stack-wide { max-width: 1100px; }
+.stack-wide > label, .stack-wide > .alert, .stack-wide > .row, .stack-wide > div:not(.card) { max-width: 640px; }
