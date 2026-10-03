@@ -47,7 +47,7 @@ export class SqlServerAdapter extends EngineAdapter {
       throw new DomainError(`Backup desaparecido: ${item.backup_file}`, { code: 'BACKUP_NOT_FOUND' });
     }
 
-    await this.ctx.log('info', `🚀 Importando ${item.backup_file} → ${item.target_db}`, {
+    await this.ctx.log('info', `Importando ${item.backup_file} en la BD ${item.target_db}.`, {
       itemId: item.id,
     });
 
@@ -60,7 +60,7 @@ export class SqlServerAdapter extends EngineAdapter {
     });
 
     await this.ctx.reportOperation?.(item.id, operation);
-    await this.ctx.log('info', `ℹ️ Operation ID (${item.target_db}): ${operation}`, {
+    await this.ctx.log('info', `Operación de Cloud SQL (${item.target_db}): ${operation}`, {
       itemId: item.id,
     });
 
@@ -70,7 +70,7 @@ export class SqlServerAdapter extends EngineAdapter {
         timeoutSeconds: config.worker.operationTimeoutSeconds,
         pollIntervalSeconds: config.worker.operationPollIntervalSeconds,
         onPoll: (status) =>
-          this.ctx.log('info', `ℹ️ Estado ${item.target_db}: ${status}`, { itemId: item.id }),
+          this.ctx.log('info', `Estado de ${item.target_db}: ${status}`, { itemId: item.id }),
       },
     );
     return res;
@@ -100,7 +100,7 @@ export class SqlServerAdapter extends EngineAdapter {
     for (const script of this.postScripts) {
       const batches = splitSqlBatches(script.sql_text);
       const where = script.database_name ?? 'master';
-      await this.ctx.log('info', `📄 Post-script "${script.name}" en ${where} (${batches.length} lote(s))`);
+      await this.ctx.log('info', `Post-script "${script.name}" en ${where}: ${batches.length} lote(s).`);
       try {
         await withConnection(this.ctx.instance, script.database_name, async (pool) => {
           for (const [i, batch] of batches.entries()) {
@@ -122,7 +122,7 @@ export class SqlServerAdapter extends EngineAdapter {
           cause: err,
         });
       }
-      await this.ctx.log('info', `✅ Post-script "${script.name}" OK.`);
+      await this.ctx.log('info', `Post-script "${script.name}" completado.`);
     }
   }
 }
