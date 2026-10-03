@@ -362,6 +362,8 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 .pill { font-size: .72rem; padding: .1rem .5rem; border-radius: 999px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
 .pill.on { background: rgba(46,204,113,.15); color: var(--ok); }
 .pill.warn { background: rgba(240,180,41,.15); color: var(--warn); }
+.breadcrumb { flex-wrap: wrap; align-items: center; }
+.folder-list { list-style: none; margin: .4rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: .4rem; }
 .textarea { min-height: 150px; font-family: var(--mono); font-size: .8rem; resize: vertical; }
 .result { margin-top: .5rem; }
 

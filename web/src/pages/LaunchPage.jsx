@@ -20,6 +20,8 @@ export default function LaunchPage() {
   const [buckets, setBuckets] = useState(null); // null = cargando / sin instancia
   const [bucketId, setBucketId] = useState('');
   const [files, setFiles] = useState(null); // null = aún no listados
+  const [folders, setFolders] = useState([]);
+  const [subPath, setSubPath] = useState([]); // subcarpetas navegadas dentro del bucket/prefijo
   const [rows, setRows] = useState([]); // [{ backupFile, targetDb, importUser }]
   // BDs y usuarios reales de la instancia (Admin API). null = no cargados / no disponibles.
   const [dbs, setDbs] = useState(null);
@@ -59,7 +61,9 @@ export default function LaunchPage() {
 
   const instance = instances.find((i) => i.id === instanceId);
   const selectedBucket = (buckets ?? []).find((b) => b.id === bucketId);
-  const bucketPath = selectedBucket ? bucketPathOf(selectedBucket) : '';
+  const basePath = selectedBucket ? bucketPathOf(selectedBucket) : '';
+  // Carpeta actual (base del bucket + subcarpetas): es la ruta que se lista y la que usa el job.
+  const bucketPath = basePath ? [basePath, ...subPath].join('/') : '';
 
   const existsDb = (name) => !!dbs?.some((d) => d.name.toLowerCase() === name.trim().toLowerCase());
   const replaced = dbs ? rows.filter((r) => r.targetDb && existsDb(r.targetDb)) : [];
@@ -68,12 +72,13 @@ export default function LaunchPage() {
     setError(null);
     setLoadingFiles(true);
     setFiles(null);
+    setFolders([]);
     setRows([]);
     try {
       const d = await api.get(
         `/backups?instanceId=${instanceId}&bucketPath=${encodeURIComponent(bucketPath)}`,
       );
-      if (isCurrent()) setFiles(d.files);
+      if (isCurrent()) { setFiles(d.files); setFolders(d.folders ?? []); }
     } catch (e) {
       if (isCurrent()) setError(e.message);
     } finally {
@@ -81,9 +86,13 @@ export default function LaunchPage() {
     }
   };
 
-  // Al elegir (o preseleccionar) un bucket, lista sus backups sin pulsar nada.
+  // Cambiar de bucket vuelve a su carpeta base.
+  useEffect(() => { setSubPath([]); }, [instanceId, bucketId]);
+
+  // Al elegir un bucket o entrar en una carpeta, lista su contenido sin pulsar nada.
   useEffect(() => {
     setFiles(null);
+    setFolders([]);
     setRows([]);
     if (!bucketPath) return;
     let current = true;
@@ -176,18 +185,45 @@ export default function LaunchPage() {
         )}
 
         {bucketPath && (
-          <div className="row gap">
-            <span className="muted small mono">{bucketPath}/</span>
+          <div className="row gap breadcrumb">
+            <button type="button" className="btn ghost small mono" onClick={() => setSubPath([])} disabled={!subPath.length}>
+              {basePath}
+            </button>
+            {subPath.map((seg, i) => (
+              <span key={i} className="row gap">
+                <span className="muted">/</span>
+                <button type="button" className="btn ghost small mono" onClick={() => setSubPath(subPath.slice(0, i + 1))} disabled={i === subPath.length - 1}>
+                  {seg}
+                </button>
+              </span>
+            ))}
             <button type="button" className="btn ghost small" onClick={() => loadFiles()} disabled={loadingFiles}>
               {loadingFiles ? 'Listando…' : '↻ Recargar'}
             </button>
           </div>
         )}
 
+        {(subPath.length > 0 || folders.length > 0) && (
+          <div className="card">
+            <div className="muted small">Carpetas</div>
+            <ul className="folder-list">
+              {subPath.length > 0 && (
+                <li><button type="button" className="btn ghost small" onClick={() => setSubPath(subPath.slice(0, -1))}>⬆ ..</button></li>
+              )}
+              {folders.map((f) => (
+                <li key={f}>
+                  <button type="button" className="btn ghost small mono" onClick={() => setSubPath([...subPath, f])}>📁 {f}/</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {files?.length === 0 && (
           <div className="alert warn small">
-            No hay backups <span className="mono">{EXTENSIONS[instance?.engine] ?? ''}</span> directamente en{' '}
-            <span className="mono">{bucketPath}/</span> (no se listan subcarpetas). Revisa el prefijo del bucket en el Catálogo.
+            No hay backups <span className="mono">{EXTENSIONS[instance?.engine] ?? ''}</span> en{' '}
+            <span className="mono">{bucketPath}/</span>.
+            {folders.length > 0 ? ' Entra en una de las carpetas.' : ' Revisa el prefijo del bucket en el Catálogo.'}
           </div>
         )}
 

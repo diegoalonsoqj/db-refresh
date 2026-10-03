@@ -1,7 +1,7 @@
 import '../test-support/env.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseGsUri, normalizeBucketLocation, dirPrefix } from '../server/gcp/storage.client.js';
+import { parseGsUri, normalizeBucketLocation, dirPrefix, folderName } from '../server/gcp/storage.client.js';
 import { DomainError } from '../server/domain/errors.js';
 import { InfraError } from '../server/domain/errors.js';
 
@@ -39,4 +39,10 @@ test('dirPrefix: el prefijo se trata como carpeta', () => {
   assert.equal(dirPrefix('/a/b/'), 'a/b/');
   assert.equal(dirPrefix(''), '');
   assert.equal(dirPrefix(undefined), '');
+});
+
+test('folderName: nombre de subcarpeta relativo a la carpeta listada', () => {
+  assert.equal(folderName('homologaciones/2026-10/', 'homologaciones/'), '2026-10');
+  assert.equal(folderName('raiz/', ''), 'raiz');
+  assert.equal(folderName('a/b c/', 'a/'), 'b c');
 });

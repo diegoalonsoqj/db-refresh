@@ -7,8 +7,8 @@ import { subscribe } from '../jobs/progress.js';
 export async function listBackups(req, res, next) {
   try {
     const { instanceId, bucketPath } = req.query;
-    const files = await backupService.listBackups(instanceId, bucketPath);
-    res.json({ files });
+    const { files, folders } = await backupService.listBackups(instanceId, bucketPath);
+    res.json({ files, folders });
   } catch (err) {
     next(err);
   }
