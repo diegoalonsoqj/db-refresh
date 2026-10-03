@@ -10,7 +10,7 @@ import * as csql from '../../gcp/cloudsql.client.js';
 import { config } from '../../config/index.js';
 import { resolveSqlConnection } from '../sql/connection.js';
 import { withConnection } from './mssql.client.js';
-import { describeOrphanResult, fixOrphanUsers } from './orphans.js';
+import { describeOrphanResult, ensureDbAccess, fixOrphanUsers } from './orphans.js';
 
 export class SqlServerAdapter extends EngineAdapter {
   get acceptedExtensions() {
@@ -36,9 +36,18 @@ export class SqlServerAdapter extends EngineAdapter {
     await log('info', `Corrigiendo usuarios huérfanos de ${item.target_db}.`);
     try {
       const conn = await resolveSqlConnection(this.ctx.instance);
+      // 1) Desde master: acceso a la BD restaurada (toma el ownership si hace falta).
+      const access = await withConnection(conn, null, (pool) => ensureDbAccess(pool, item.target_db));
+      if (access.took) {
+        await log('info', `El login ${access.login} no tenía acceso a ${item.target_db}: se le asignó como owner para poder corregirla.`);
+      }
+      // 2) En la BD: remapeo de usuarios y owner final (el elegido, si se tomó el ownership).
       const result = await withConnection(conn, item.target_db, (pool) =>
-        fixOrphanUsers(pool, { database: item.target_db, dbOwner: item.orphan_db_owner }));
+        fixOrphanUsers(pool, { database: item.target_db, dbOwner: item.orphan_db_owner, forceOwner: access.took }));
       for (const [level, msg] of describeOrphanResult(item.target_db, result)) await log(level, msg);
+      if (access.took && !item.orphan_db_owner) {
+        await log('info', `Owner de ${item.target_db}: queda ${access.login} (no se eligió otro).`);
+      }
     } catch (err) {
       await log('warning', `No se pudo corregir los usuarios huérfanos de ${item.target_db}: ${err.message}`);
     }
