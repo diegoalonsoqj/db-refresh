@@ -241,6 +241,35 @@ test('instancias sin conexión SQL (solo restore) y buckets con ruta gs:// pegad
   }
 });
 
+test('restore: validación de owner/BD de sistema y RBAC de BDs/usuarios en vivo', async (t) => {
+  if (!dbOk) return t.skip('BD no disponible');
+  const { cookie } = await login(ADMIN, PW);
+  const proj = await req('POST', '/projects', { cookie, body: { projectId: `${PROJ}-own` } });
+  let instId = null;
+  try {
+    const inst = await req('POST', '/instances', {
+      cookie, body: { projectRef: proj.data.id, instanceName: 'itest-owner', engine: 'sqlserver' },
+    });
+    instId = inst.data.id;
+    const launch = (mapping) =>
+      req('POST', '/restores', { cookie, body: { instanceId: instId, bucketPath: 'gs://itest-b/x', mapping } });
+    // Inválidos: no se encola nada.
+    assert.equal((await launch([{ backupFile: 'a.bak', targetDb: 'ventas', importUser: 'sa' }])).status, 422);
+    assert.equal((await launch([{ backupFile: 'a.bak', targetDb: 'master' }])).status, 422);
+
+    const viewer = await login(VIEWER, PW);
+    assert.equal((await req('GET', `/instances/${instId}/databases`, { cookie: viewer.cookie })).status, 403);
+    assert.equal((await req('GET', `/instances/${instId}/users`, { cookie: viewer.cookie })).status, 403);
+    // SQL Server: el owner no aplica -> no consulta GCP.
+    const users = await req('GET', `/instances/${instId}/users`, { cookie });
+    assert.equal(users.status, 200);
+    assert.deepEqual(users.data, { supported: false, users: [] });
+  } finally {
+    if (instId) await req('DELETE', `/instances/${instId}`, { cookie });
+    await req('DELETE', `/projects/${proj.data.id}`, { cookie });
+  }
+});
+
 test('usuarios AD: alta por admin (normaliza dominio), duplicado 409, validaciones y login', async (t) => {
   if (!dbOk) return t.skip('BD no disponible');
   const { cookie } = await login(ADMIN, PW);

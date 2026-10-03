@@ -7,18 +7,7 @@ import * as catalogRepo from '../data/repositories/catalog.repo.js';
 import * as restoreService from './restore.service.js';
 import { mapPgError } from '../data/pgErrors.js';
 import { NotFoundError, ValidationError } from '../domain/errors.js';
-import { assertSafeName } from '../lib/validation.js';
-
-/** Valida y normaliza el mapping [{ backupFile, targetDb }]. */
-function validateMapping(mapping) {
-  if (!Array.isArray(mapping) || mapping.length === 0) {
-    throw new ValidationError('mapping vacío: indica al menos un backup -> BD');
-  }
-  return mapping.map((m) => ({
-    backupFile: assertSafeName(m.backupFile ?? '', 'backupFile'),
-    targetDb: assertSafeName(m.targetDb ?? '', 'targetDb'),
-  }));
-}
+import { validateMapping } from '../domain/restoreMapping.js';
 
 /** Valida referencias e insumos comunes de creación/edición. */
 async function validateInput(input) {
@@ -37,7 +26,8 @@ async function validateInput(input) {
     instanceRef,
     bucketRef,
     cronExpr: input.cronExpr,
-    mapping: validateMapping(input.mapping),
+    // [{ backupFile, targetDb, importUser }]: se revalida al disparar (launchRestore).
+    mapping: validateMapping(instance.engine, input.mapping),
     isActive: input.isActive ?? true,
   };
 }
@@ -92,7 +82,7 @@ export async function triggerSchedule(schedule) {
     instanceId: schedule.instance_ref,
     bucketId: schedule.bucket_ref,
     bucketPath: buildBucketPath(bucket),
-    mapping: schedule.mapping, // [{ backupFile, targetDb }]
+    mapping: schedule.mapping, // [{ backupFile, targetDb, importUser }]
     requestedBy: schedule.created_by ?? null,
   });
 

@@ -47,6 +47,7 @@ export default function JobDetailPage() {
   }, [events]);
 
   if (!job) return <div className="muted">Cargando…</div>;
+  const hasOwner = job.items.some((it) => it.import_user);
 
   return (
     <div>
@@ -61,7 +62,7 @@ export default function JobDetailPage() {
       <h3>Bases de datos</h3>
       <table className="table">
         <thead>
-          <tr><th>#</th><th>Backup</th><th>Destino</th><th>Estado</th></tr>
+          <tr><th>#</th><th>Backup</th><th>Destino</th>{hasOwner && <th>Owner</th>}<th>Estado</th></tr>
         </thead>
         <tbody>
           {job.items.map((it) => (
@@ -69,6 +70,7 @@ export default function JobDetailPage() {
               <td>{it.seq}</td>
               <td className="mono small">{it.backup_file}</td>
               <td className="mono">{it.target_db}</td>
+              {hasOwner && <td className="mono small">{it.import_user ?? <span className="muted">por defecto</span>}</td>}
               <td><StatusBadge status={it.status} /></td>
             </tr>
           ))}

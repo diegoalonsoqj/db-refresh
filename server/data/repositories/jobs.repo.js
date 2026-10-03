@@ -5,7 +5,7 @@ import { query, withTransaction } from '../pool.js';
 /**
  * Crea un job y sus items en una sola transacción.
  * @param {object} job  { instanceId, bucketId, engine, requestedBy, bucketPath }
- * @param {Array}  items [{ backupFile, targetDb, seq, sizeBytes }]
+ * @param {Array}  items [{ backupFile, targetDb, seq, sizeBytes, importUser }]
  * @returns job creado con sus items
  */
 export async function createJob(job, items) {
@@ -23,10 +23,10 @@ export async function createJob(job, items) {
     for (const it of items) {
       const r = await client.query(
         `INSERT INTO restore_job_items
-           (job_ref, backup_file, target_db, seq, size_bytes, status)
-         VALUES ($1, $2, $3, $4, $5, 'pending')
+           (job_ref, backup_file, target_db, seq, size_bytes, import_user, status)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending')
          RETURNING *`,
-        [created.id, it.backupFile, it.targetDb, it.seq, it.sizeBytes ?? null],
+        [created.id, it.backupFile, it.targetDb, it.seq, it.sizeBytes ?? null, it.importUser ?? null],
       );
       insertedItems.push(r.rows[0]);
     }

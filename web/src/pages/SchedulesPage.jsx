@@ -28,6 +28,8 @@ export default function SchedulesPage() {
     setEditing(s); setFormErr(null);
   };
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  // Owner del import (importUser): solo PostgreSQL.
+  const isPg = (instances ?? []).find((i) => i.id === form.instanceRef)?.engine === 'postgres';
 
   const setMap = (idx, k, v) => setForm((f) => ({ ...f, mapping: f.mapping.map((m, i) => (i === idx ? { ...m, [k]: v } : m)) }));
   const addMap = () => setForm((f) => ({ ...f, mapping: [...f.mapping, { backupFile: '', targetDb: '' }] }));
@@ -35,7 +37,10 @@ export default function SchedulesPage() {
 
   const save = async (e) => {
     e.preventDefault(); setBusy(true); setFormErr(null);
-    const body = { ...form, mapping: form.mapping.filter((m) => m.backupFile && m.targetDb) };
+    const mapping = form.mapping
+      .filter((m) => m.backupFile && m.targetDb)
+      .map(({ importUser, ...m }) => (isPg && importUser ? { ...m, importUser } : m));
+    const body = { ...form, mapping };
     try {
       if (editing.id) await api.put(`/schedules/${editing.id}`, body);
       else await api.post('/schedules', body);
@@ -113,6 +118,9 @@ export default function SchedulesPage() {
                   <input className="mono" style={{ flex: 1 }} placeholder="dump.sql" value={m.backupFile} onChange={(e) => setMap(idx, 'backupFile', e.target.value)} />
                   <span className="muted">→</span>
                   <input className="mono" style={{ flex: 1 }} placeholder="mi_bd" value={m.targetDb} onChange={(e) => setMap(idx, 'targetDb', e.target.value)} />
+                  {isPg && (
+                    <input className="mono" style={{ flex: 1 }} placeholder="owner (opc.)" title="Usuario con el que se importa (PostgreSQL)" value={m.importUser ?? ''} onChange={(e) => setMap(idx, 'importUser', e.target.value)} />
+                  )}
                   <button type="button" className="btn ghost small" onClick={() => delMap(idx)} disabled={form.mapping.length === 1}>✕</button>
                 </div>
               ))}

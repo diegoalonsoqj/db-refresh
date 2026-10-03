@@ -15,7 +15,11 @@ export default function LaunchPage() {
   const [buckets, setBuckets] = useState([]);
   const [bucketId, setBucketId] = useState('');
   const [files, setFiles] = useState([]);
-  const [rows, setRows] = useState([]); // [{ backupFile, targetDb }]
+  const [rows, setRows] = useState([]); // [{ backupFile, targetDb, importUser }]
+  // BDs y usuarios reales de la instancia (Admin API). null = no cargados / no disponibles.
+  const [dbs, setDbs] = useState(null);
+  const [owners, setOwners] = useState({ supported: false, users: [] });
+  const [liveWarn, setLiveWarn] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
@@ -29,13 +33,23 @@ export default function LaunchPage() {
     setBucketId('');
     setFiles([]);
     setRows([]);
-    if (instanceId) {
-      api.get(`/instances/${instanceId}/buckets`).then(setBuckets).catch((e) => setError(e.message));
-    }
+    setDbs(null);
+    setOwners({ supported: false, users: [] });
+    setLiveWarn(null);
+    if (!instanceId) return;
+    api.get(`/instances/${instanceId}/buckets`).then(setBuckets).catch((e) => setError(e.message));
+    // Si falla (SA sin permisos, instancia inexistente...), se puede seguir escribiendo el nombre a mano.
+    api.get(`/instances/${instanceId}/databases`).then(setDbs)
+      .catch((e) => setLiveWarn(`No se pudieron listar las BDs de la instancia (${e.message}). Escribe el nombre de la BD destino.`));
+    api.get(`/instances/${instanceId}/users`).then(setOwners)
+      .catch((e) => setLiveWarn((w) => w ?? `No se pudieron listar los usuarios de la instancia (${e.message}).`));
   }, [instanceId]);
 
   const selectedBucket = buckets.find((b) => b.id === bucketId);
   const bucketPath = selectedBucket ? bucketPathOf(selectedBucket) : '';
+
+  const existsDb = (name) => !!dbs?.some((d) => d.name.toLowerCase() === name.trim().toLowerCase());
+  const replaced = dbs ? rows.filter((r) => r.targetDb && existsDb(r.targetDb)) : [];
 
   const loadFiles = async () => {
     setError(null);
@@ -59,18 +73,23 @@ export default function LaunchPage() {
       if (prev.find((r) => r.backupFile === fileName)) {
         return prev.filter((r) => r.backupFile !== fileName);
       }
-      return [...prev, { backupFile: fileName, targetDb: fileName.replace(/\.(bak|sql|gz)$/gi, '') }];
+      return [...prev, { backupFile: fileName, targetDb: fileName.replace(/\.(bak|sql|gz)$/gi, ''), importUser: '' }];
     });
 
-  const setTarget = (fileName, val) =>
-    setRows((prev) => prev.map((r) => (r.backupFile === fileName ? { ...r, targetDb: val } : r)));
+  const setRow = (fileName, key, val) =>
+    setRows((prev) => prev.map((r) => (r.backupFile === fileName ? { ...r, [key]: val } : r)));
 
   const submit = async (e) => {
     e.preventDefault();
     setError(null);
     setBusy(true);
     try {
-      const d = await api.post('/restores', { instanceId, bucketId, bucketPath, mapping: rows });
+      const mapping = rows.map((r) => ({
+        backupFile: r.backupFile,
+        targetDb: r.targetDb.trim(),
+        ...(r.importUser ? { importUser: r.importUser } : {}),
+      }));
+      const d = await api.post('/restores', { instanceId, bucketId, bucketPath, mapping });
       navigate(`/jobs/${d.jobId}`);
     } catch (err) {
       setError(err.message);
@@ -83,7 +102,7 @@ export default function LaunchPage() {
     <div>
       <h2>Lanzar restauración</h2>
       <div className="alert warn">
-        ⚠️ La restauración es destructiva: elimina la BD de destino antes de importar.
+        ⚠️ La restauración es destructiva: si la BD de destino existe, se elimina antes de importar.
       </div>
       {error && <div className="alert error">{error}</div>}
 
@@ -99,6 +118,7 @@ export default function LaunchPage() {
             ))}
           </select>
         </label>
+        {liveWarn && <div className="alert warn small">{liveWarn}</div>}
 
         <label>
           Bucket
@@ -127,10 +147,19 @@ export default function LaunchPage() {
 
         {files.length > 0 && (
           <div className="card">
-            <div className="muted small">Selecciona backups y define la BD destino:</div>
+            <div className="muted small">
+              Selecciona backups y define la BD destino: elige una existente (se reemplaza) o escribe un nombre nuevo.
+              {owners.supported && ' El owner (PostgreSQL) es el usuario con el que se importa: los objetos quedan a su nombre.'}
+            </div>
+            <datalist id="instance-dbs">
+              {(dbs ?? []).map((d) => <option key={d.name} value={d.name} />)}
+            </datalist>
             <table className="table">
               <thead>
-                <tr><th /><th>Archivo</th><th>Tamaño</th><th>BD destino</th></tr>
+                <tr>
+                  <th /><th>Archivo</th><th>Tamaño</th><th>BD destino</th>
+                  {owners.supported && <th>Owner</th>}
+                </tr>
               </thead>
               <tbody>
                 {files.map((f) => {
@@ -142,18 +171,46 @@ export default function LaunchPage() {
                       <td className="muted small">{(f.sizeBytes / 1e6).toFixed(1)} MB</td>
                       <td>
                         {r && (
-                          <input
-                            className="mono"
-                            value={r.targetDb}
-                            onChange={(e) => setTarget(f.fileName, e.target.value)}
-                          />
+                          <div className="row gap">
+                            <input
+                              className="mono"
+                              list="instance-dbs"
+                              value={r.targetDb}
+                              onChange={(e) => setRow(f.fileName, 'targetDb', e.target.value)}
+                              required
+                            />
+                            {dbs && r.targetDb.trim() && (existsDb(r.targetDb)
+                              ? <span className="pill warn" title="La BD existe: se eliminará y se restaurará">existe · se reemplaza</span>
+                              : <span className="pill on">nueva</span>)}
+                          </div>
                         )}
                       </td>
+                      {owners.supported && (
+                        <td>
+                          {r && (
+                            <select value={r.importUser} onChange={(e) => setRow(f.fileName, 'importUser', e.target.value)}>
+                              <option value="">(por defecto de Cloud SQL)</option>
+                              {owners.users.map((u) => (
+                                <option key={u.name} value={u.name}>
+                                  {u.name}{u.type !== 'BUILT_IN' ? ` (${u.type})` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {replaced.length > 0 && (
+          <div className="alert warn">
+            Se eliminarán y reemplazarán {replaced.length} BD existente(s):{' '}
+            <span className="mono">{replaced.map((r) => r.targetDb.trim()).join(', ')}</span>
           </div>
         )}
 

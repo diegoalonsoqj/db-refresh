@@ -361,6 +361,7 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 .checkline { flex-direction: row; align-items: center; gap: .5rem; }
 .pill { font-size: .72rem; padding: .1rem .5rem; border-radius: 999px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
 .pill.on { background: rgba(46,204,113,.15); color: var(--ok); }
+.pill.warn { background: rgba(240,180,41,.15); color: var(--warn); }
 .textarea { min-height: 150px; font-family: var(--mono); font-size: .8rem; resize: vertical; }
 .result { margin-top: .5rem; }
 
