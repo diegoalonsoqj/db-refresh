@@ -66,6 +66,33 @@ export async function importBackup({ project, instance, database, uri, fileType,
   }
 }
 
+/**
+ * Texto legible de un error de GCP (función pura): error de una operación
+ * ({ errors: [{ code, message }] }), error HTTP de googleapis (Gaxios) u otro Error.
+ */
+export function describeGcpError(cause) {
+  if (!cause) return '';
+  const opErrors = cause.errors ?? cause.error?.errors;
+  if (Array.isArray(opErrors) && opErrors.length) {
+    return opErrors.map((e) => [e.code, e.message].filter(Boolean).join(': ')).join('; ');
+  }
+  const api = cause.response?.data?.error;
+  if (api?.message) return `${cause.response.status ?? ''} ${api.message}`.trim();
+  return cause.message ?? String(cause);
+}
+
+/** ¿Existe la BD en la instancia? (databases.get; 404 -> false). */
+export async function databaseExists({ project, instance, database }) {
+  try {
+    const client = await getClient();
+    await client.databases.get({ project, instance, database });
+    return true;
+  } catch (err) {
+    if (err?.response?.status === 404) return false;
+    throw new InfraError(`No se pudo comprobar si existe la BD ${database}`, { code: 'DB_GET_FAILED', cause: err });
+  }
+}
+
 /** BDs de la instancia (sin credenciales SQL: Admin API con la SA). -> [{ name, charset, collation }] */
 export async function listDatabases({ project, instance }) {
   try {
