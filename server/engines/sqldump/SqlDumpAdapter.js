@@ -99,7 +99,11 @@ export class SqlDumpAdapter extends EngineAdapter {
       database: item.target_db,
       uri: meta.gsUri,
       fileType: 'SQL', // PostgreSQL / MySQL (incl. .gz)
+      importUser: item.import_user ?? undefined, // solo PG (validado al lanzar)
     });
+    if (item.import_user) {
+      await this.ctx.log('info', `👤 Owner del import: ${item.import_user}`, { itemId: item.id });
+    }
 
     await this.ctx.reportOperation?.(item.id, operation);
     await this.ctx.log('info', `ℹ️ Operation ID (${item.target_db}): ${operation}`, {

@@ -3,6 +3,8 @@
 // - deleteDatabase()  -> databases.delete    (equiv. DROP DATABASE)
 // - getOperation()    -> operations.get       (equiv. `gcloud sql operations describe`)
 // - listOperations()  -> operations.list      (equiv. `gcloud sql operations list`)
+// - listDatabases()   -> databases.list       (equiv. `gcloud sql databases list`)
+// - listUsers()       -> users.list           (equiv. `gcloud sql users list`)
 import { sqladmin } from '@googleapis/sqladmin';
 import { GoogleAuth } from 'google-auth-library';
 import { InfraError } from '../domain/errors.js';
@@ -28,24 +30,31 @@ async function getClient() {
 }
 
 /**
+ * importContext del Admin API (función pura). `importUser` solo aplica a
+ * PostgreSQL: el import se ejecuta con ese usuario y los objetos quedan a su nombre.
+ */
+export function buildImportContext({ database, uri, fileType, importUser }) {
+  return {
+    kind: 'sql#importContext',
+    fileType,          // 'BAK' (SQL Server) | 'SQL' (postgres/mysql, incl. .gz)
+    uri,               // gs://bucket/archivo
+    database,
+    ...(importUser ? { importUser } : {}),
+  };
+}
+
+/**
  * Lanza un import asíncrono. Devuelve el nombre de la operación para hacer polling.
- * @param {object} p { project, instance, database, uri, fileType } fileType: 'BAK'|'SQL'
+ * @param {object} p { project, instance, database, uri, fileType, importUser? } fileType: 'BAK'|'SQL'
  * @returns operationName (string)
  */
-export async function importBackup({ project, instance, database, uri, fileType }) {
+export async function importBackup({ project, instance, database, uri, fileType, importUser }) {
   try {
     const client = await getClient();
     const { data } = await client.instances.import({
       project,
       instance,
-      requestBody: {
-        importContext: {
-          kind: 'sql#importContext',
-          fileType,          // 'BAK' (SQL Server) | 'SQL' (postgres/mysql, incl. .gz)
-          uri,               // gs://bucket/archivo
-          database,
-        },
-      },
+      requestBody: { importContext: buildImportContext({ database, uri, fileType, importUser }) },
     });
     if (!data.name) {
       throw new InfraError('import no devolvió operación', { code: 'NO_OPERATION' });
@@ -54,6 +63,36 @@ export async function importBackup({ project, instance, database, uri, fileType 
   } catch (err) {
     if (err instanceof InfraError) throw err;
     throw new InfraError(`Fallo al lanzar import de ${database}`, { code: 'IMPORT_FAILED', cause: err });
+  }
+}
+
+/** BDs de la instancia (sin credenciales SQL: Admin API con la SA). -> [{ name, charset, collation }] */
+export async function listDatabases({ project, instance }) {
+  try {
+    const client = await getClient();
+    const { data } = await client.databases.list({ project, instance });
+    return (data.items ?? []).map((d) => ({
+      name: d.name,
+      charset: d.charset ?? null,
+      collation: d.collation ?? null,
+    }));
+  } catch (err) {
+    throw new InfraError(`No se pudieron listar las BDs de ${instance}`, { code: 'DB_LIST_FAILED', cause: err });
+  }
+}
+
+/** Usuarios de la instancia (Admin API). -> [{ name, type, host }] */
+export async function listUsers({ project, instance }) {
+  try {
+    const client = await getClient();
+    const { data } = await client.users.list({ project, instance });
+    return (data.items ?? []).map((u) => ({
+      name: u.name,
+      type: u.type ?? 'BUILT_IN', // BUILT_IN | CLOUD_IAM_USER | CLOUD_IAM_SERVICE_ACCOUNT ...
+      host: u.host ?? null,       // solo MySQL
+    }));
+  } catch (err) {
+    throw new InfraError(`No se pudieron listar los usuarios de ${instance}`, { code: 'USER_LIST_FAILED', cause: err });
   }
 }
 
