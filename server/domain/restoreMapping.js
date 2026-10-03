@@ -6,6 +6,8 @@ import { ValidationError } from './errors.js';
 const SAFE_NAME = /^[A-Za-z0-9._-]+$/;
 // Usuarios de Cloud SQL: incluye '@' para usuarios IAM (p.ej. sa@proyecto.iam).
 const SAFE_USER = /^[A-Za-z0-9._@-]+$/;
+// Login de SQL Server (incluye DOMINIO\usuario); se cita con QUOTENAME en el servidor.
+const SAFE_LOGIN = /^[A-Za-z0-9._@\\-]{1,128}$/;
 // Identificador de esquema PostgreSQL sin comillas (se cita siempre al usarlo).
 const SAFE_SCHEMA = /^[A-Za-z_][A-Za-z0-9_$]{0,62}$/;
 
@@ -102,7 +104,17 @@ export function validateMapping(engine, mapping, method = 'import') {
       }
       if (!SAFE_USER.test(importUser)) throw new ValidationError(`Usuario owner inválido: ${importUser}`);
     }
-    return { backupFile, targetDb, importUser, scope, schemaName };
+    // Corrección de usuarios huérfanos tras restaurar: solo SQL Server.
+    const fixOrphans = m?.fixOrphans === true;
+    let dbOwner = null;
+    if (fixOrphans) {
+      if (engine !== 'sqlserver') {
+        throw new ValidationError(`La corrección de usuarios huérfanos solo aplica a SQL Server, no a ${engine}`);
+      }
+      dbOwner = String(m?.dbOwner ?? '').trim() || null;
+      if (dbOwner && !SAFE_LOGIN.test(dbOwner)) throw new ValidationError(`Login owner inválido: ${dbOwner}`);
+    }
+    return { backupFile, targetDb, importUser, scope, schemaName, fixOrphans, dbOwner };
   });
 
   // Restaurar la BD completa y además un esquema de esa misma BD en el mismo job es contradictorio.

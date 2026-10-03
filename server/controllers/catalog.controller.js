@@ -33,6 +33,7 @@ export const deleteInstance = wrap(async (req, res) => {
 export const listInstanceDatabases = wrap(async (req, res) => res.json(await live.listDatabases(req.params.id)));
 export const listInstanceUsers = wrap(async (req, res) => res.json(await live.listUsers(req.params.id)));
 export const getInstanceStatus = wrap(async (req, res) => res.json(await live.getStatus(req.params.id)));
+export const listInstanceLogins = wrap(async (req, res) => res.json(await live.listLogins(req.params.id)));
 
 // --- Buckets ---
 export const listBuckets = wrap(async (_req, res) => res.json(await catalog.listBuckets()));

@@ -227,6 +227,11 @@ DO $$ BEGIN
   ALTER TABLE restore_job_items ADD CONSTRAINT chk_item_scope CHECK (
     (scope = 'database' AND schema_name IS NULL) OR (scope = 'schema' AND schema_name IS NOT NULL));
 END $$;
+-- Migración idempotente: corrección de usuarios huérfanos tras restaurar (SQL Server).
+--   fix_orphans: remapear usuarios de BD a logins del mismo nombre.
+--   orphan_db_owner: login a asignar si el owner de la BD quedó huérfano (NULL = no tocar).
+ALTER TABLE restore_job_items ADD COLUMN IF NOT EXISTS fix_orphans boolean NOT NULL DEFAULT false;
+ALTER TABLE restore_job_items ADD COLUMN IF NOT EXISTS orphan_db_owner text;
 
 CREATE TABLE IF NOT EXISTS job_events (
   id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

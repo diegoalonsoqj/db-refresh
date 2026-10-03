@@ -83,6 +83,9 @@ export default function JobDetailPage() {
               <td className="mono">
                 {it.target_db}
                 {it.scope === 'schema' && <span className="muted small"> · esquema {it.schema_name}</span>}
+                {it.fix_orphans && (
+                  <span className="muted small"> · corrige usuarios huérfanos{it.orphan_db_owner ? ` (owner ${it.orphan_db_owner})` : ''}</span>
+                )}
               </td>
               {hasOwner && <td className="mono small">{it.import_user ?? <span className="muted">por defecto</span>}</td>}
               <td><StatusBadge status={it.status} /></td>

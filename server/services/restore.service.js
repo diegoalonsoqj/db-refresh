@@ -23,11 +23,16 @@ export async function launchRestore(req) {
   // alcance/esquema (solo nativo).
   const method = req.method ?? 'import';
   const items = validateMapping(instance.engine, req.mapping, method).map((m, idx) => ({ ...m, seq: idx + 1 }));
-  // El restore nativo se conecta por SQL a la IP privada: exige la conexión de la instancia.
-  if (method === 'native' && missingSqlCredentials(instance).length) {
-    throw new ValidationError(
-      'El restore nativo necesita la conexión SQL de la instancia (IP privada + credencial): configúrala en Catálogo → Instancias',
-    );
+  // El restore nativo y la corrección de huérfanos se conectan por SQL a la IP privada:
+  // exigen la conexión de la instancia.
+  if (missingSqlCredentials(instance).length) {
+    const why = method === 'native' ? 'El restore nativo'
+      : items.some((it) => it.fixOrphans) ? 'La corrección de usuarios huérfanos' : null;
+    if (why) {
+      throw new ValidationError(
+        `${why} necesita la conexión SQL de la instancia (IP privada + credencial): configúrala en Catálogo → Instancias`,
+      );
+    }
   }
 
   const job = await jobsRepo.createJob(

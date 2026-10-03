@@ -36,6 +36,17 @@ export async function withConnection(conn, database, fn) {
   }
 }
 
+/**
+ * Consulta parametrizada: `params` = { nombre: valor } (NVARCHAR). Devuelve el recordset.
+ * Los nombres que acaban en SQL dinámico se citan en el servidor con QUOTENAME.
+ */
+export async function runQuery(pool, query, params = {}) {
+  const request = pool.request();
+  for (const [name, value] of Object.entries(params)) request.input(name, sql.NVarChar(4000), value);
+  const { recordset } = await request.query(query);
+  return recordset ?? [];
+}
+
 /** Ejecuta un lote T-SQL tal cual (sin `GO`). `onInfo` recibe los PRINT. */
 export async function runBatch(pool, batch, { onInfo } = {}) {
   const request = pool.request();
