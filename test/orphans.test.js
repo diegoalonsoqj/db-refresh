@@ -1,7 +1,7 @@
 import '../test-support/env.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { describeOrphanResult, fixOrphanUsers } from '../server/engines/sqlserver/orphans.js';
+import { describeOrphanResult, ensureDbAccess, fixOrphanUsers } from '../server/engines/sqlserver/orphans.js';
 import { validateMapping } from '../server/domain/restoreMapping.js';
 import { ValidationError } from '../server/domain/errors.js';
 
@@ -73,4 +73,49 @@ test('validateMapping: corrección de huérfanos solo en SQL Server y login owne
   assert.equal(validateMapping('sqlserver', [{ backupFile: 'a.bak', targetDb: 'x' }])[0].fixOrphans, false);
   assert.throws(() => validateMapping('postgres', [{ backupFile: 'a.sql', targetDb: 'x', fixOrphans: true }]), ValidationError);
   assert.throws(() => validateMapping('sqlserver', [{ backupFile: 'a.bak', targetDb: 'x', fixOrphans: true, dbOwner: 'x]; DROP' }]), ValidationError);
+});
+
+function masterPool({ access, me = 'usr_admin', failTake = false }) {
+  const executed = [];
+  return {
+    executed,
+    request() {
+      const params = {};
+      return {
+        input(name, _t, value) { params[name] = value; },
+        async query(sql) {
+          executed.push({ sql, params: { ...params } });
+          if (sql.includes('HAS_DBACCESS')) return { recordset: access === undefined ? [] : [{ has_access: access, me, owner: null }] };
+          if (sql.includes('ALTER AUTHORIZATION')) {
+            if (failTake) throw new Error('Cannot find the database');
+            return { recordset: [] };
+          }
+          return { recordset: [] };
+        },
+      };
+    },
+  };
+}
+
+test('ensureDbAccess: con acceso no toca nada; sin acceso toma el ownership para el propio login', async () => {
+  const ok = masterPool({ access: 1 });
+  assert.deepEqual(await ensureDbAccess(ok, 'SolPago'), { took: false, login: 'usr_admin' });
+  assert.equal(ok.executed.some((e) => e.sql.includes('ALTER AUTHORIZATION')), false);
+
+  const sin = masterPool({ access: 0 });
+  assert.deepEqual(await ensureDbAccess(sin, 'SolPago'), { took: true, login: 'usr_admin' });
+  const take = sin.executed.find((e) => e.sql.includes('ALTER AUTHORIZATION'));
+  assert.deepEqual(take.params, { db: 'SolPago', owner: 'usr_admin' });
+});
+
+test('ensureDbAccess: sin permisos para tomarla explica qué credencial usar', async () => {
+  await assert.rejects(ensureDbAccess(masterPool({ access: 0, me: 'usrApprovals', failTake: true }), 'SolPago'),
+    /usrApprovals no tiene acceso a SolPago.*sqlserver/);
+  await assert.rejects(ensureDbAccess(masterPool({ access: undefined }), 'NoExiste'), /no existe o no es visible/);
+});
+
+test('fixOrphanUsers: tras tomar el ownership asigna el owner elegido aunque no esté huérfano', async () => {
+  const pool = fakePool({ orphans: [], logins: [], owner: 'usr_admin' });
+  const r = await fixOrphanUsers(pool, { database: 'SolPago', dbOwner: 'app_owner', forceOwner: true });
+  assert.deepEqual(r.owner, { status: 'fixed', detail: 'app_owner' });
 });

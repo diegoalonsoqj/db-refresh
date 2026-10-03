@@ -31,12 +31,41 @@ const SET_OWNER_SQL = `
 DECLARE @cmd nvarchar(max) = N'ALTER AUTHORIZATION ON DATABASE::' + QUOTENAME(@db) + N' TO ' + QUOTENAME(@owner) + N';';
 EXEC (@cmd);`;
 
+const ACCESS_SQL = `
+SELECT HAS_DBACCESS(@db) AS has_access, SUSER_SNAME() AS me, SUSER_SNAME(owner_sid) AS owner
+  FROM sys.databases WHERE name = @db;`;
+
+/**
+ * Paso previo (conectado a master): tras restaurar un .bak de otro entorno, el
+ * login de la credencial no suele tener usuario en la BD y no puede ni abrirla.
+ * Si no tiene acceso, toma el ownership (ALTER AUTHORIZATION a sí mismo) para
+ * quedar como dbo. Requiere un login con privilegios de administración de Cloud
+ * SQL (rol CustomerDbRootRole, como el usuario `sqlserver`).
+ * @returns { took: boolean, login }
+ */
+export async function ensureDbAccess(masterPool, database) {
+  const [row] = await runQuery(masterPool, ACCESS_SQL, { db: database });
+  if (!row) throw new Error(`La BD ${database} no existe o no es visible para el login de la credencial`);
+  if (row.has_access === 1) return { took: false, login: row.me };
+  try {
+    await runQuery(masterPool, SET_OWNER_SQL, { db: database, owner: row.me });
+  } catch (err) {
+    throw new Error(
+      `el login ${row.me} no tiene acceso a ${database} y no puede tomar su ownership (${err.message}). ` +
+        'Usa una credencial con el rol de administración de Cloud SQL (como el usuario sqlserver).',
+    );
+  }
+  return { took: true, login: row.me };
+}
+
 /**
  * @param pool    conexión mssql abierta en la BD restaurada
- * @param options { database, dbOwner|null }
+ * @param options { database, dbOwner|null, forceOwner }
+ *                forceOwner: asignar dbOwner aunque el owner no esté huérfano
+ *                (p.ej. la app tomó el ownership para poder corregir).
  * @returns { orphans, remapped: [], skipped: [], errors: [{ user, message }], owner: { status, detail } }
  */
-export async function fixOrphanUsers(pool, { database, dbOwner = null }) {
+export async function fixOrphanUsers(pool, { database, dbOwner = null, forceOwner = false }) {
   const result = { orphans: 0, remapped: [], skipped: [], errors: [], owner: { status: 'ok', detail: null } };
 
   const orphans = await runQuery(pool, DETECT_ORPHANS_SQL);
@@ -57,7 +86,10 @@ export async function fixOrphanUsers(pool, { database, dbOwner = null }) {
 
   try {
     const [row] = await runQuery(pool, DB_OWNER_SQL, { db: database });
-    if (row && row.owner === null) {
+    if (row && dbOwner && forceOwner && row.owner !== dbOwner) {
+      await runQuery(pool, SET_OWNER_SQL, { db: database, owner: dbOwner });
+      result.owner = { status: 'fixed', detail: dbOwner };
+    } else if (row && row.owner === null) {
       if (!dbOwner) {
         result.owner = { status: 'skipped', detail: 'el owner de la BD está huérfano y no se indicó un login' };
       } else {
