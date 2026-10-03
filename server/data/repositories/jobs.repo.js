@@ -126,14 +126,28 @@ export async function updateItemStatus(itemId, status, patch = {}) {
 }
 
 /** Registra un evento de progreso (feed SSE + traza). */
+/** Canal de NOTIFY por el que el worker avisa a la API de cada evento nuevo (payload "jobId:eventId"). */
+export const EVENTS_CHANNEL = 'job_events';
+
 export async function addEvent(jobId, { itemId = null, level = 'info', message }) {
+  // Insert + aviso en una sola sentencia: la API (otro proceso) lo recibe por LISTEN
+  // y lo reenvía al navegador por SSE.
   const { rows } = await query(
-    `INSERT INTO job_events (job_ref, item_ref, level, message)
-     VALUES ($1, $2, $3, $4)
-     RETURNING *`,
+    `WITH ev AS (
+       INSERT INTO job_events (job_ref, item_ref, level, message)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *
+     )
+     SELECT ev.*, pg_notify('${EVENTS_CHANNEL}', ev.job_ref::text || ':' || ev.id::text) AS _notified FROM ev`,
     [jobId, itemId, level, message],
   );
-  return rows[0];
+  const { _notified, ...event } = rows[0];
+  return event;
+}
+
+export async function getEventById(id) {
+  const { rows } = await query(`SELECT * FROM job_events WHERE id = $1`, [id]);
+  return rows[0] ?? null;
 }
 
 export async function getEventsSince(jobId, sinceId = 0) {
