@@ -32,6 +32,7 @@ export default function LaunchPage() {
   const [dbs, setDbs] = useState(null);
   const [owners, setOwners] = useState({ supported: false, users: [] });
   const [liveWarn, setLiveWarn] = useState(null);
+  const [instStatus, setInstStatus] = useState(null); // { running, reason, state }
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
@@ -48,8 +49,11 @@ export default function LaunchPage() {
     setDbs(null);
     setOwners({ supported: false, users: [] });
     setLiveWarn(null);
+    setInstStatus(null);
     setMethod('import');
     if (!instanceId) return;
+    // Una instancia detenida rechaza drop/import: se avisa antes de lanzar.
+    api.get(`/instances/${instanceId}/status`).then(setInstStatus).catch(() => setInstStatus(null));
     api.get(`/instances/${instanceId}/buckets`)
       .then((list) => {
         setBuckets(list);
@@ -200,7 +204,13 @@ export default function LaunchPage() {
             ))}
           </select>
         </label>
-        {liveWarn && <div className="alert warn small">{liveWarn}</div>}
+        {instStatus && !instStatus.running && (
+          <div className="alert error">
+            <IconAlert /> La instancia {instance?.instance_name} {instStatus.reason}. Iníciala en la consola de GCP
+            antes de restaurar; mientras tanto no se puede lanzar el restore.
+          </div>
+        )}
+        {liveWarn && instStatus?.running !== false && <div className="alert warn small">{liveWarn}</div>}
 
         {instance?.engine === 'postgres' && (
           <label>
@@ -413,7 +423,7 @@ export default function LaunchPage() {
           </div>
         )}
 
-        <button className="btn primary" disabled={busy || rows.length === 0 || (native && !nativeReady)}>
+        <button className="btn primary" disabled={busy || rows.length === 0 || (native && !nativeReady) || instStatus?.running === false}>
           {busy ? 'Encolando…' : `Restaurar ${rows.length} ${rows.length === 1 ? 'destino' : 'destinos'}`}
         </button>
       </form>

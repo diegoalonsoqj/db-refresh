@@ -81,7 +81,11 @@ export async function runJob(job, logger) {
     try {
       // Entre items puede colarse otra operación (backup automático, otro job):
       // re-chequear antes de cada DROP. El primero ya lo cubrió el pre-check.
-      if (idx > 0) await adapter.waitInstanceIdle({ itemId: item.id });
+      // También puede haberse detenido la instancia mientras se restauraba la BD anterior.
+      if (idx > 0) {
+        await adapter.assertInstanceRunning();
+        await adapter.waitInstanceIdle({ itemId: item.id });
+      }
 
       // 1) Validar backup
       await jobsRepo.updateItemStatus(item.id, 'pending', { markStarted: true });

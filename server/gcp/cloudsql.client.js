@@ -81,6 +81,36 @@ export function describeGcpError(cause) {
   return cause.message ?? String(cause);
 }
 
+/**
+ * ¿La instancia acepta operaciones? (función pura sobre instances.get).
+ * Una instancia detenida desde la consola conserva state RUNNABLE pero con
+ * activationPolicy NEVER; el resto de estados (SUSPENDED, MAINTENANCE, FAILED...)
+ * tampoco admiten drop/import.
+ * @returns { running, state, activationPolicy, reason|null }
+ */
+export function instanceRunState(data = {}) {
+  const state = data.state ?? 'UNKNOWN';
+  const activationPolicy = data.settings?.activationPolicy ?? null;
+  let reason = null;
+  if (activationPolicy === 'NEVER') reason = 'está detenida';
+  else if (state !== 'RUNNABLE') reason = `no está disponible (estado ${state})`;
+  return { running: !reason, state, activationPolicy, reason };
+}
+
+/** Estado de la instancia (instances.get). -> instanceRunState(...) + databaseVersion */
+export async function getInstanceStatus({ project, instance }) {
+  try {
+    const client = await getClient();
+    const { data } = await client.instances.get({ project, instance });
+    return { ...instanceRunState(data), databaseVersion: data.databaseVersion ?? null };
+  } catch (err) {
+    throw new InfraError(`No se pudo consultar el estado de la instancia ${instance}`, {
+      code: 'INSTANCE_GET_FAILED',
+      cause: err,
+    });
+  }
+}
+
 /** ¿Existe la BD en la instancia? (databases.get; 404 -> false). */
 export async function databaseExists({ project, instance, database }) {
   try {

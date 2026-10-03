@@ -105,11 +105,28 @@ export class EngineAdapter {
    * Lanza si algo falla.
    */
   async preflight(_items = []) {
+    await this.assertInstanceRunning();
     await this.waitInstanceIdle();
     if (this.postScripts.length) {
       await this.ctx.log('info', `Verificando la conexión SQL para ${this.postScripts.length} post-script(s).`);
       await this.verifyPostScriptsConnection();
       await this.ctx.log('info', 'Conexión SQL para post-scripts verificada.');
+    }
+  }
+
+  /**
+   * La instancia debe estar encendida: detenida (activationPolicy NEVER) o en
+   * mantenimiento, el Admin API rechaza drop/import ("instance is not running").
+   */
+  async assertInstanceRunning() {
+    const name = this.ctx.instance.instance_name;
+    const st = await csql.getInstanceStatus({ project: this.ctx.project, instance: name });
+    if (!st.running) {
+      throw new DomainError(
+        `La instancia ${name} ${st.reason}. Iníciala (consola de GCP o ` +
+          `gcloud sql instances patch ${name} --activation-policy=ALWAYS) y vuelve a lanzar el restore.`,
+        { code: 'INSTANCE_NOT_RUNNING' },
+      );
     }
   }
 

@@ -2,7 +2,7 @@ import '../test-support/env.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateMapping, isSystemDatabase, supportsImportUser } from '../server/domain/restoreMapping.js';
-import { buildImportContext, describeGcpError } from '../server/gcp/cloudsql.client.js';
+import { buildImportContext, describeGcpError, instanceRunState } from '../server/gcp/cloudsql.client.js';
 import { ValidationError } from '../server/domain/errors.js';
 
 test('validateMapping: normaliza y deja importUser en null si no viene', () => {
@@ -50,4 +50,14 @@ test('describeGcpError: operación, HTTP de googleapis y Error genérico', () =>
   assert.equal(describeGcpError({ response: { status: 403, data: { error: { message: 'Not authorized' } } } }), '403 Not authorized');
   assert.equal(describeGcpError(new Error('boom')), 'boom');
   assert.equal(describeGcpError(undefined), '');
+});
+
+test('instanceRunState: encendida, detenida (activationPolicy NEVER) y en mantenimiento', () => {
+  assert.equal(instanceRunState({ state: 'RUNNABLE', settings: { activationPolicy: 'ALWAYS' } }).running, true);
+  const stopped = instanceRunState({ state: 'RUNNABLE', settings: { activationPolicy: 'NEVER' } });
+  assert.equal(stopped.running, false);
+  assert.equal(stopped.reason, 'está detenida');
+  const maint = instanceRunState({ state: 'MAINTENANCE', settings: { activationPolicy: 'ALWAYS' } });
+  assert.equal(maint.running, false);
+  assert.match(maint.reason, /MAINTENANCE/);
 });
