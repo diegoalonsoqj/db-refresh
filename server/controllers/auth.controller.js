@@ -9,7 +9,7 @@ function cookieOptions() {
   return {
     httpOnly: true,
     sameSite: 'strict',           // mitiga CSRF en peticiones cross-site
-    secure: config.env === 'production', // solo HTTPS en prod
+    secure: config.http.https,     // solo si se sirve por HTTPS (HTTPS_ENABLED)
     maxAge: config.auth.sessionMaxAgeMs,
     path: '/',
   };

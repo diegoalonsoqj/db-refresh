@@ -131,7 +131,7 @@ Abre **http://localhost:5173**.
 
 ```bash
 npm install -g pm2
-npm --prefix web run build                      # genera web/dist (servir con Nginx/CDN)
+npm --prefix web run build                      # genera web/dist (lo sirve la propia API)
 pm2 start ecosystem.config.cjs --env production
 pm2 save                                        # guarda la lista de procesos
 pm2 startup                                     # una vez: ejecuta el comando que imprime (systemd) -> arranca al reiniciar el host
@@ -139,7 +139,19 @@ pm2 startup                                     # una vez: ejecuta el comando qu
 
 En Windows `pm2 startup` no está soportado: registrar PM2 como servicio con `pm2-installer` (o `pm2-windows-startup`) y luego `pm2 save`. Tras cambiar el ecosystem: `pm2 reload ecosystem.config.cjs --env production && pm2 save`. El worker tiene `kill_timeout` de 15 min: un `reload/stop` espera a que termine el restore en curso.
 
-En producción: servir tras **HTTPS** (la cookie de sesión usa `Secure`), un **reverse proxy** delante de la API, y los secretos desde **Secret Manager**.
+**Frontend:** si existe `web/dist`, la API lo sirve en el mismo puerto (assets con cache inmutable + fallback SPA a `index.html`; `/api/*` desconocido → 404 JSON). Hay que rehacer el build tras cada cambio del frontend.
+
+**Acceso por IP:puerto sin dominio (HTTP plano)** — en el `.env` del servidor:
+
+```bash
+NODE_ENV=production
+HTTPS_ENABLED=false   # cookie sin Secure, sin HSTS ni upgrade-insecure-requests (si no: login roto / pantalla en blanco)
+TRUST_PROXY=false     # API expuesta directa: X-Forwarded-For no es de fiar (rate-limit de login)
+```
+
+Riesgos de esta etapa: el tráfico (password y cookie de sesión) va en claro y no hay revocación de sesión (un JWT capturado vale `JWT_EXPIRES_IN`). Mitigar: **firewall** que limite el puerto a las IPs/VPN de la empresa, **cambiar el password del admin base** antes de exponer, y pasar a dominio + TLS (Caddy/Nginx delante → `HTTPS_ENABLED=true`, `TRUST_PROXY=1`) en cuanto sea posible.
+
+Objetivo final de producción: **HTTPS** con reverse proxy delante (`HTTPS_ENABLED=true`, `TRUST_PROXY=1`) y los secretos desde **Secret Manager**.
 
 ## Primer acceso
 

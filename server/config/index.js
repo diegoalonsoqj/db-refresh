@@ -1,6 +1,11 @@
 // Carga y validación de configuración. Único punto que lee process.env.
 // En prod, los secretos deberían resolverse desde Secret Manager antes de aquí.
 import 'dotenv/config';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parseTrustProxy } from '../lib/http.js';
+
+const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 
 function req(name, fallback = undefined) {
   const v = process.env[name] ?? fallback;
@@ -18,6 +23,12 @@ function int(name, fallback) {
   return n;
 }
 
+function bool(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  return !['false', '0', 'no'].includes(raw.trim().toLowerCase());
+}
+
 // Convierte '8h' | '30m' | '7d' | '3600s' | '3600' a milisegundos.
 function durationMs(value, fallbackMs) {
   if (!value) return fallbackMs;
@@ -28,10 +39,23 @@ function durationMs(value, fallbackMs) {
   return n * unit;
 }
 
+const env = process.env.NODE_ENV ?? 'development';
+
 export const config = {
-  env: process.env.NODE_ENV ?? 'development',
+  env,
   port: int('PORT', 3000),
   logLevel: process.env.LOG_LEVEL ?? 'info',
+
+  http: {
+    // ¿Se sirve por HTTPS? Controla cookie Secure, HSTS y upgrade-insecure-requests.
+    // Default: true en production. Acceso por IP:puerto sin TLS -> HTTPS_ENABLED=false.
+    https: bool('HTTPS_ENABLED', env === 'production'),
+    // false si la API está expuesta directa (sin reverse proxy). Ver lib/http.js.
+    trustProxy: parseTrustProxy(process.env.TRUST_PROXY, 1),
+    // Build del frontend que sirve Express si existe (web/dist). SERVE_WEB=false lo desactiva.
+    serveWeb: bool('SERVE_WEB', true),
+    webDistDir: process.env.WEB_DIST_DIR || join(ROOT, 'web', 'dist'),
+  },
 
   db: {
     host: req('APP_DB_HOST', 'localhost'),
