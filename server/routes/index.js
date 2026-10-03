@@ -95,6 +95,7 @@ router.get('/instances/:id/buckets', authenticate, catalog.listInstanceBuckets);
 // BDs/usuarios reales de la instancia (Admin API): para preparar restores -> operator/admin.
 router.get('/instances/:id/databases', ...operator, catalog.listInstanceDatabases);
 router.get('/instances/:id/users', ...operator, catalog.listInstanceUsers);
+router.get('/instances/:id/status', ...operator, catalog.getInstanceStatus);
 router.post('/instances/:id/buckets', ...admin, catalog.linkBucket);
 router.delete('/instances/:id/buckets/:bucketId', ...admin, catalog.unlinkBucket);
 // Post-scripts: SQL arbitrario que se ejecuta contra la instancia (y puede
