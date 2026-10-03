@@ -132,6 +132,10 @@ sudo ufw status
 
 Si el proveedor tiene firewall en su panel (security group), aplica la misma regla allí. Sin HTTPS el puerto **no** debe quedar abierto a todo internet.
 
+## 7b. Red hacia las instancias (post-scripts)
+
+Los post-scripts se ejecutan conectándose por SQL a la **IP privada** de la instancia con una credencial del módulo **Credenciales**. Desde el VPS deben estar accesibles los puertos de las instancias que los usen (SQL Server 1433, PostgreSQL 5432, MySQL 3306). Compruébalo con *Probar conexión* en Catálogo → Instancias.
+
 ## 8. Verificar
 
 ```bash

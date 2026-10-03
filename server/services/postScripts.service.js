@@ -34,7 +34,7 @@ function validate(input = {}) {
 function assertInstanceCanRun(instance, data) {
   if (!data.isActive || !missingSqlCredentials(instance).length) return;
   throw new ValidationError(
-    'La instancia no tiene conexión SQL (host, usuario admin y secret ref): configúrala en ' +
+    'La instancia no tiene conexión SQL (host y credencial): configúrala en ' +
       'Catálogo → Instancias o guarda el post-script como inactivo',
   );
 }

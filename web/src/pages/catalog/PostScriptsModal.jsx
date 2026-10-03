@@ -6,6 +6,18 @@ import Modal from '../../components/Modal.jsx';
 // TODAS las restauraciones salieron OK (equivale a scripts_extras del script original).
 const empty = { name: '', databaseName: '', sortOrder: 0, isActive: true, sqlText: '' };
 
+const DB_PLACEHOLDER = { sqlserver: 'vacío = master', postgres: 'vacío = postgres', mysql: 'vacío = sin BD por defecto' };
+const SQL_PLACEHOLDER = {
+  sqlserver: "EXEC msdb.dbo.sp_start_job @job_name = 'Permisos - Homologacion';\nGO",
+  postgres: 'ALTER SCHEMA public OWNER TO app_owner;\nGRANT USAGE ON SCHEMA public TO app_reader;',
+  mysql: "GRANT SELECT ON mi_bd.* TO 'app_reader'@'%';",
+};
+const SQL_HINT = {
+  sqlserver: 'Lotes separados por GO en línea sola. Los PRINT aparecen en el log del job.',
+  postgres: 'Admite varias sentencias. Los RAISE NOTICE aparecen en el log del job.',
+  mysql: 'Admite varias sentencias separadas por ";". Indica la BD o usa nombres calificados.',
+};
+
 export default function PostScriptsModal({ instance, onClose }) {
   const [scripts, setScripts] = useState(null);
   const [editing, setEditing] = useState(null); // null | {} (nuevo) | script
@@ -47,15 +59,15 @@ export default function PostScriptsModal({ instance, onClose }) {
     finally { setBusy(false); }
   };
 
-  const unsupported = instance.engine !== 'sqlserver';
+  const noConnection = !instance.db_host || !instance.credential_ref;
 
   return (
     <Modal wide title={`Post-scripts de ${instance.instance_name}`} onClose={onClose}>
       {err && <div className="alert error">{err}</div>}
-      {unsupported && (
-        <div className="alert error">
-          Aún no se ejecutan post-scripts en {instance.engine}: un job de esta instancia con scripts activos
-          fallará en el pre-check (sin borrar nada).
+      {noConnection && (
+        <div className="alert warn">
+          La instancia no tiene conexión SQL (IP privada + credencial). Los post-scripts se pueden preparar
+          como inactivos; para activarlos, configura la conexión en la instancia.
         </div>
       )}
 
@@ -66,13 +78,13 @@ export default function PostScriptsModal({ instance, onClose }) {
             <label style={{ flex: 1 }}>Orden<input type="number" step="1" value={form.sortOrder} onChange={set('sortOrder')} /></label>
           </div>
           <label>Base de datos
-            <input className="mono" value={form.databaseName} onChange={set('databaseName')} placeholder="vacío = master" />
+            <input className="mono" value={form.databaseName} onChange={set('databaseName')} placeholder={DB_PLACEHOLDER[instance.engine]} />
             <span className="muted small">Donde se conecta el script. Puede ser una de las BD restauradas.</span>
           </label>
           <label>SQL
             <textarea className="textarea" value={form.sqlText} onChange={set('sqlText')} spellCheck={false} required
-              placeholder={"EXEC msdb.dbo.sp_start_job @job_name = 'Permisos - Homologacion';\nGO"} />
-            <span className="muted small">Lotes separados por <span className="mono">GO</span> en línea sola. Los PRINT aparecen en el log del job.</span>
+              placeholder={SQL_PLACEHOLDER[instance.engine]} />
+            <span className="muted small">{SQL_HINT[instance.engine]}</span>
           </label>
           <label className="checkline">
             <input type="checkbox" checked={form.isActive} onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))} />
