@@ -271,6 +271,12 @@ test('restore: validación de owner/BD de sistema y RBAC de BDs/usuarios en vivo
       cookie, body: { instanceId: instId, bucketPath: 'gs://itest-b/x', method: 'native', mapping: [{ backupFile: 'a.tar', targetDb: 'ventas' }] },
     });
     assert.equal(native.status, 422);
+    // Corrección de huérfanos sin conexión SQL en la instancia: 422 (no se encola).
+    assert.equal((await launch([{ backupFile: 'a.bak', targetDb: 'ventas', fixOrphans: true }])).status, 422);
+    const logins = await req('GET', `/instances/${instId}/logins`, { cookie });
+    assert.equal(logins.status, 200);
+    assert.equal(logins.data.supported, true);
+    assert.match(logins.data.reason, /conexión SQL/);
 
     const viewer = await login(VIEWER, PW);
     assert.equal((await req('GET', `/instances/${instId}/databases`, { cookie: viewer.cookie })).status, 403);

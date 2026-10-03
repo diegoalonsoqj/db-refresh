@@ -7,12 +7,12 @@ import { ValidationError } from '../server/domain/errors.js';
 
 test('validateMapping: normaliza y deja importUser en null si no viene', () => {
   assert.deepEqual(validateMapping('sqlserver', [{ backupFile: ' a.bak ', targetDb: 'ventas' }]),
-    [{ backupFile: 'a.bak', targetDb: 'ventas', importUser: null, scope: 'database', schemaName: null }]);
+    [{ backupFile: 'a.bak', targetDb: 'ventas', importUser: null, scope: 'database', schemaName: null, fixOrphans: false, dbOwner: null }]);
 });
 
 test('validateMapping: owner solo en PostgreSQL', () => {
   assert.deepEqual(validateMapping('postgres', [{ backupFile: 'd.sql', targetDb: 'app', importUser: 'app_owner' }]),
-    [{ backupFile: 'd.sql', targetDb: 'app', importUser: 'app_owner', scope: 'database', schemaName: null }]);
+    [{ backupFile: 'd.sql', targetDb: 'app', importUser: 'app_owner', scope: 'database', schemaName: null, fixOrphans: false, dbOwner: null }]);
   assert.throws(() => validateMapping('mysql', [{ backupFile: 'd.sql', targetDb: 'app', importUser: 'root' }]), ValidationError);
   assert.throws(() => validateMapping('sqlserver', [{ backupFile: 'd.bak', targetDb: 'app', importUser: 'sa' }]), ValidationError);
   // usuarios IAM permitidos; inyección no

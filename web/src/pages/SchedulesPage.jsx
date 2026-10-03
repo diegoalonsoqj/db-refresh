@@ -30,7 +30,9 @@ export default function SchedulesPage() {
   };
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   // Owner del import (importUser): solo PostgreSQL.
-  const isPg = (instances ?? []).find((i) => i.id === form.instanceRef)?.engine === 'postgres';
+  const engineOf = (instances ?? []).find((i) => i.id === form.instanceRef)?.engine;
+  const isPg = engineOf === 'postgres';
+  const isMssql = engineOf === 'sqlserver';
 
   const setMap = (idx, k, v) => setForm((f) => ({ ...f, mapping: f.mapping.map((m, i) => (i === idx ? { ...m, [k]: v } : m)) }));
   const addMap = () => setForm((f) => ({ ...f, mapping: [...f.mapping, { backupFile: '', targetDb: '' }] }));
@@ -40,7 +42,11 @@ export default function SchedulesPage() {
     e.preventDefault(); setBusy(true); setFormErr(null);
     const mapping = form.mapping
       .filter((m) => m.backupFile && m.targetDb)
-      .map(({ importUser, ...m }) => (isPg && importUser ? { ...m, importUser } : m));
+      .map(({ importUser, fixOrphans, ...m }) => ({
+        ...m,
+        ...(isPg && importUser ? { importUser } : {}),
+        ...(isMssql && fixOrphans ? { fixOrphans: true } : {}),
+      }));
     const body = { ...form, mapping };
     try {
       if (editing.id) await api.put(`/schedules/${editing.id}`, body);
@@ -119,6 +125,12 @@ export default function SchedulesPage() {
                   <input className="mono" style={{ flex: 1 }} placeholder="dump.sql" value={m.backupFile} onChange={(e) => setMap(idx, 'backupFile', e.target.value)} />
                   <span className="muted">→</span>
                   <input className="mono" style={{ flex: 1 }} placeholder="mi_bd" value={m.targetDb} onChange={(e) => setMap(idx, 'targetDb', e.target.value)} />
+                  {isMssql && (
+                    <label className="checkline small" title="Tras restaurar, remapea los usuarios de BD a su login">
+                      <input type="checkbox" checked={!!m.fixOrphans} onChange={(e) => setMap(idx, 'fixOrphans', e.target.checked)} />
+                      Huérfanos
+                    </label>
+                  )}
                   {isPg && (
                     <input className="mono" style={{ flex: 1 }} placeholder="owner (opc.)" title="Usuario con el que se importa (PostgreSQL)" value={m.importUser ?? ''} onChange={(e) => setMap(idx, 'importUser', e.target.value)} />
                   )}

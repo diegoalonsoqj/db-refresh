@@ -33,6 +33,8 @@ export default function LaunchPage() {
   const [owners, setOwners] = useState({ supported: false, users: [] });
   const [liveWarn, setLiveWarn] = useState(null);
   const [instStatus, setInstStatus] = useState(null); // { running, reason, state }
+  // Logins de SQL Server (owner de la BD al corregir usuarios huérfanos).
+  const [logins, setLogins] = useState({ supported: false, logins: [] });
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
@@ -50,8 +52,11 @@ export default function LaunchPage() {
     setOwners({ supported: false, users: [] });
     setLiveWarn(null);
     setInstStatus(null);
+    setLogins({ supported: false, logins: [] });
     setMethod('import');
     if (!instanceId) return;
+    api.get(`/instances/${instanceId}/logins`).then(setLogins)
+      .catch((e) => setLogins({ supported: true, logins: [], reason: e.message }));
     // Una instancia detenida rechaza drop/import: se avisa antes de lanzar.
     api.get(`/instances/${instanceId}/status`).then(setInstStatus).catch(() => setInstStatus(null));
     api.get(`/instances/${instanceId}/buckets`)
@@ -71,6 +76,11 @@ export default function LaunchPage() {
 
   const instance = instances.find((i) => i.id === instanceId);
   const native = method === 'native';
+  // Corrección de usuarios huérfanos tras restaurar: solo SQL Server con conexión SQL.
+  const orphansOn = logins.supported;
+  const orphansReady = orphansOn && !logins.reason;
+  const allOrphans = rows.length > 0 && rows.every((r) => r.fixOrphans);
+  const setAllOrphans = (on) => setRows((prev) => prev.map((r) => ({ ...r, fixOrphans: on })));
   const nativeReady = Boolean(instance?.db_host && instance?.credential_ref);
   const selectedBucket = (buckets ?? []).find((b) => b.id === bucketId);
   const basePath = selectedBucket ? bucketPathOf(selectedBucket) : '';
@@ -126,7 +136,7 @@ export default function LaunchPage() {
       const match = findDb(suggested);
       return [...prev, {
         backupFile: fileName, targetDb: match?.name ?? suggested, isNew: !match, importUser: '',
-        scope: 'database', schemaName: '',
+        scope: 'database', schemaName: '', fixOrphans: false, dbOwner: '',
       }];
     });
 
@@ -174,6 +184,7 @@ export default function LaunchPage() {
         targetDb: r.targetDb.trim(),
         ...(r.importUser ? { importUser: r.importUser } : {}),
         ...(native && r.scope === 'schema' ? { scope: 'schema', schemaName: r.schemaName.trim() } : {}),
+        ...(orphansOn && r.fixOrphans ? { fixOrphans: true, ...(r.dbOwner ? { dbOwner: r.dbOwner } : {}) } : {}),
       }));
       const d = await api.post('/restores', { instanceId, bucketId, bucketPath, method, mapping });
       navigate(`/jobs/${d.jobId}`);
@@ -316,6 +327,9 @@ export default function LaunchPage() {
               «Nueva BD» para escribir el nombre.
               {native && ' Con alcance «Esquema» solo se reemplaza ese esquema dentro de una BD existente.'}
               {owners.supported && ' El owner es el rol con el que se restaura: los objetos quedan a su nombre.'}
+              {orphansOn && (orphansReady
+                ? ' «Usuarios huérfanos»: tras restaurar cada BD, remapea sus usuarios al login del mismo nombre (los que no tengan login se reportan) y, si se elige, asigna el owner de la BD.'
+                : ` La corrección de usuarios huérfanos no está disponible: ${logins.reason}.`)}
             </div>
             <div className="table-scroll">
             <table className="table">
@@ -325,6 +339,15 @@ export default function LaunchPage() {
                   {native && <th>Alcance</th>}
                   <th>BD destino</th>
                   {owners.supported && <th>Owner</th>}
+                  {orphansOn && (
+                    <th title={orphansReady ? 'Tras restaurar, remapea los usuarios de BD a su login' : logins.reason}>
+                      <label className="checkline">
+                        <input type="checkbox" checked={allOrphans} disabled={!orphansReady || !rows.length}
+                          onChange={(e) => setAllOrphans(e.target.checked)} />
+                        Usuarios huérfanos
+                      </label>
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -398,6 +421,26 @@ export default function LaunchPage() {
                                 </option>
                               ))}
                             </select>
+                          )}
+                        </td>
+                      )}
+                      {orphansOn && (
+                        <td>
+                          {r && (
+                            <div className="stack-tight">
+                              <label className="checkline small">
+                                <input type="checkbox" checked={r.fixOrphans} disabled={!orphansReady}
+                                  onChange={(e) => setRow(f.fileName, 'fixOrphans', e.target.checked)} />
+                                Corregir
+                              </label>
+                              {r.fixOrphans && (
+                                <select value={r.dbOwner} onChange={(e) => setRow(f.fileName, 'dbOwner', e.target.value)}
+                                  title="Login a asignar como owner si el owner de la BD quedó huérfano">
+                                  <option value="">Owner: no tocar</option>
+                                  {logins.logins.map((l) => <option key={l.name} value={l.name}>Owner: {l.name}</option>)}
+                                </select>
+                              )}
+                            </div>
                           )}
                         </td>
                       )}

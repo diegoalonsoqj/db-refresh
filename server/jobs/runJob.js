@@ -100,8 +100,11 @@ export async function runJob(job, logger) {
       const res = await adapter.restore(item);
 
       if (res.ok) {
-        await jobsRepo.updateItemStatus(item.id, 'succeeded', { markFinished: true });
         await log('info', `Restauración completada: ${item.target_db}.`, { itemId: item.id });
+        // Tras restaurar: corrección de usuarios huérfanos (SQL Server). Sus fallos
+        // son avisos; la restauración sigue contando como correcta.
+        if (item.fix_orphans && adapter.fixOrphans) await adapter.fixOrphans(item);
+        await jobsRepo.updateItemStatus(item.id, 'succeeded', { markFinished: true });
       } else {
         allOk = false;
         const msg = describeGcpError(res.error) || JSON.stringify(res.error ?? {});

@@ -8,10 +8,40 @@ import { DomainError } from '../../domain/errors.js';
 import * as storage from '../../gcp/storage.client.js';
 import * as csql from '../../gcp/cloudsql.client.js';
 import { config } from '../../config/index.js';
+import { resolveSqlConnection } from '../sql/connection.js';
+import { withConnection } from './mssql.client.js';
+import { describeOrphanResult, fixOrphanUsers } from './orphans.js';
 
 export class SqlServerAdapter extends EngineAdapter {
   get acceptedExtensions() {
     return ['.bak'];
+  }
+
+  /** Pre-check: si algún item corrige usuarios huérfanos, la conexión SQL debe funcionar. */
+  async preflight(items = []) {
+    await super.preflight(items);
+    if (items.some((it) => it.fix_orphans) && !this.postScripts.length) {
+      await this.ctx.log('info', 'Verificando la conexión SQL para la corrección de usuarios huérfanos.');
+      await this.verifyPostScriptsConnection();
+      await this.ctx.log('info', 'Conexión SQL verificada.');
+    }
+  }
+
+  /**
+   * Corrige los usuarios huérfanos de la BD recién restaurada. Nunca lanza: los
+   * fallos se registran como avisos y la restauración se mantiene correcta.
+   */
+  async fixOrphans(item) {
+    const log = (level, msg) => this.ctx.log(level, msg, { itemId: item.id });
+    await log('info', `Corrigiendo usuarios huérfanos de ${item.target_db}.`);
+    try {
+      const conn = await resolveSqlConnection(this.ctx.instance);
+      const result = await withConnection(conn, item.target_db, (pool) =>
+        fixOrphanUsers(pool, { database: item.target_db, dbOwner: item.orphan_db_owner }));
+      for (const [level, msg] of describeOrphanResult(item.target_db, result)) await log(level, msg);
+    } catch (err) {
+      await log('warning', `No se pudo corregir los usuarios huérfanos de ${item.target_db}: ${err.message}`);
+    }
   }
 
   async listBackups() {
