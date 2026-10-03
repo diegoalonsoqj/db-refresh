@@ -441,3 +441,6 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 .login-brand { display: flex; align-items: center; gap: .5rem; }
 .login-brand svg { width: 24px; height: 24px; }
 .table td.actions .btn { white-space: nowrap; }
+.stack-tight { display: flex; flex-direction: column; gap: .35rem; }
+.table-scroll { overflow-x: auto; }
+.table-scroll .table input, .table-scroll .table select { min-width: 9rem; }

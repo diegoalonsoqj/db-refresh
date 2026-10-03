@@ -3,6 +3,7 @@
 import { SqlServerAdapter } from './sqlserver/SqlServerAdapter.js';
 import { PostgresAdapter } from './postgres/PostgresAdapter.js';
 import { MySqlAdapter } from './mysql/MySqlAdapter.js';
+import { PgNativeAdapter } from './postgres/PgNativeAdapter.js';
 import { DomainError } from '../domain/errors.js';
 
 const REGISTRY = {
@@ -11,7 +12,16 @@ const REGISTRY = {
   mysql: MySqlAdapter,
 };
 
-export function createAdapter(engine, ctx) {
+/**
+ * @param method 'import' (Cloud SQL Admin API) | 'native' (pg_restore/psql, solo PostgreSQL)
+ */
+export function createAdapter(engine, ctx, method = 'import') {
+  if (method === 'native') {
+    if (engine !== 'postgres') {
+      throw new DomainError(`Restore nativo no disponible para ${engine}`, { code: 'ENGINE_UNSUPPORTED' });
+    }
+    return new PgNativeAdapter(ctx);
+  }
   const Adapter = REGISTRY[engine];
   if (!Adapter) {
     throw new DomainError(`Motor no soportado: ${engine}`, { code: 'ENGINE_UNSUPPORTED' });

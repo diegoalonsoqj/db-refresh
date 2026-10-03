@@ -73,6 +73,26 @@ export class EngineAdapter {
     }
   }
 
+  /** Crea una BD vacía (databases.insert) y espera a que termine la operación. */
+  async createEmptyDatabase(targetDb) {
+    await this.ctx.log('info', `Creando la BD vacía ${targetDb}.`);
+    const op = await csql.createDatabase({
+      project: this.ctx.project,
+      instance: this.ctx.instance.instance_name,
+      database: targetDb,
+    });
+    const res = await csql.waitForOperation(
+      { project: this.ctx.project, operation: op },
+      {
+        timeoutSeconds: config.worker.operationTimeoutSeconds,
+        pollIntervalSeconds: config.worker.operationPollIntervalSeconds,
+      },
+    );
+    if (!res.ok) {
+      throw new InfraError(`No se pudo crear la BD ${targetDb}`, { code: 'CREATE_DB_FAILED', cause: res.error });
+    }
+  }
+
   get postScripts() {
     return this.ctx.postScripts ?? [];
   }
@@ -84,7 +104,7 @@ export class EngineAdapter {
    *     es barato; descubrirlo tras el restore deja el job a medias.
    * Lanza si algo falla.
    */
-  async preflight() {
+  async preflight(_items = []) {
     await this.waitInstanceIdle();
     if (this.postScripts.length) {
       await this.ctx.log('info', `Verificando la conexión SQL para ${this.postScripts.length} post-script(s).`);

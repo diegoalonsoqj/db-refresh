@@ -20,6 +20,12 @@ node -v                                              # debe mostrar v24.x
 
 # PM2 global
 sudo npm install -g pm2
+
+# Cliente de PostgreSQL 17 (pg_restore / psql) para el restore nativo
+sudo apt-get install -y postgresql-common
+sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+sudo apt-get install -y postgresql-client-17
+pg_restore --version    # 17.x (debe ser >= la versión del pg_dump que generó los dumps)
 ```
 
 ## 2. PostgreSQL 17
@@ -135,6 +141,8 @@ Si el proveedor tiene firewall en su panel (security group), aplica la misma reg
 ## 7b. Red hacia las instancias (post-scripts)
 
 Los post-scripts se ejecutan conectándose por SQL a la **IP privada** de la instancia con una credencial del módulo **Credenciales**. Desde el VPS deben estar accesibles los puertos de las instancias que los usen (SQL Server 1433, PostgreSQL 5432, MySQL 3306). Compruébalo con *Probar conexión* en Catálogo → Instancias.
+
+El **restore nativo de PostgreSQL** (`pg_restore`/`psql`) usa la misma conexión: necesita el 5432 de la IP privada y una credencial con permisos para crear BDs y esquemas (`postgres` o miembro de `cloudsqlsuperuser`). Los dumps se generan con `pg_dump -Ft` (tar) o en plano (`.sql`/`.sql.gz`, mejor con `--no-owner --no-privileges`); para restaurar un solo esquema desde un `.sql`, el dump debe haberse generado con `pg_dump -n <esquema>`.
 
 ## 8. Verificar
 

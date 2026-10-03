@@ -6,9 +6,18 @@ import { subscribe } from '../jobs/progress.js';
 
 export async function listBackups(req, res, next) {
   try {
-    const { instanceId, bucketPath } = req.query;
-    const { files, folders } = await backupService.listBackups(instanceId, bucketPath);
+    const { instanceId, bucketPath, method } = req.query;
+    const { files, folders } = await backupService.listBackups(instanceId, bucketPath, method);
     res.json({ files, folders });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function listDumpSchemas(req, res, next) {
+  try {
+    const { instanceId, bucketPath, file } = req.query;
+    res.json({ schemas: await backupService.listDumpSchemas(instanceId, bucketPath, file) });
   } catch (err) {
     next(err);
   }
@@ -20,6 +29,7 @@ export async function launchRestore(req, res, next) {
       instanceId: req.body.instanceId,
       bucketId: req.body.bucketId,
       bucketPath: req.body.bucketPath,
+      method: req.body.method,
       mapping: req.body.mapping,
       requestedBy: req.user?.id ?? null,
     });

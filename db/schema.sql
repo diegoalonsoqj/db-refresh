@@ -214,6 +214,19 @@ CREATE INDEX IF NOT EXISTS idx_items_job ON restore_job_items (job_ref);
 -- Migración idempotente: owner del import (PostgreSQL, importContext.importUser).
 -- NULL = usuario por defecto de Cloud SQL.
 ALTER TABLE restore_job_items ADD COLUMN IF NOT EXISTS import_user text;
+-- Migración idempotente (Fase C2): restore nativo de PostgreSQL (pg_restore/psql).
+--   restore_jobs.method: 'import' (Cloud SQL Admin API) | 'native' (pg_restore/psql)
+--   restore_job_items.scope: 'database' (BD completa) | 'schema' (solo schema_name)
+ALTER TABLE restore_jobs ADD COLUMN IF NOT EXISTS method text NOT NULL DEFAULT 'import';
+ALTER TABLE restore_job_items ADD COLUMN IF NOT EXISTS scope text NOT NULL DEFAULT 'database';
+ALTER TABLE restore_job_items ADD COLUMN IF NOT EXISTS schema_name text;
+DO $$ BEGIN
+  ALTER TABLE restore_jobs DROP CONSTRAINT IF EXISTS chk_job_method;
+  ALTER TABLE restore_jobs ADD CONSTRAINT chk_job_method CHECK (method IN ('import', 'native'));
+  ALTER TABLE restore_job_items DROP CONSTRAINT IF EXISTS chk_item_scope;
+  ALTER TABLE restore_job_items ADD CONSTRAINT chk_item_scope CHECK (
+    (scope = 'database' AND schema_name IS NULL) OR (scope = 'schema' AND schema_name IS NOT NULL));
+END $$;
 
 CREATE TABLE IF NOT EXISTS job_events (
   id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
