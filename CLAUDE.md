@@ -110,7 +110,7 @@ Esos dos proyectos (en `D:\DEVS\`) son la **referencia visual**; al tocar layout
 
 ## Estado actual
 Backend + frontend completos, con hardening (headers, rate-limit, gestión de usuarios, auditoría, secretos) y **tests unitarios (20 ✓)**. `npm install` (raíz y `web/`) + `npm run migrate` OK; `web` compila (`vite build`, 52 módulos). Verificado E2E por HTTP: auth híbrida local+AD, RBAC, settings, catálogo CRUD, schedules+scheduler, y todo el hardening (helmet headers, 413 body-limit, rate-limit 429, users CRUD + auto-protección, change-password, auditoría con FK SET NULL).
-Documentación: **`README.md`** (instalación/config/ejecución/API/tests/despliegue).
+Documentación: **`README.md`** (instalación/config/ejecución/API/tests) + **`docs/DEPLOY.md`** (despliegue VPS paso a paso: PM2, firewall, actualización, troubleshooting).
 **Dev runner:** `npm run dev:all` (`scripts/dev.js`, Node puro sin deps) levanta API+worker+scheduler+web en una terminal (salida prefijada, Ctrl+C mata el árbol con `taskkill /T` en Windows, fail-fast si un servicio cae); admite subconjunto (`node scripts/dev.js api web`). **Puerto de la API: 3004** — `vite.config.js` lo lee del `.env` de la raíz, así proxy y API no se desalinean.
 Pendiente para cerrar (requiere infra real del usuario): **prueba E2E de un job real contra Cloud SQL** (camino GCP de adaptadores sin ejercitar contra infra real) y **login AD contra un directorio real** (cableado verificado, no probado contra AD vivo). Post-scripts PG/MySQL. Menor: `next_run_at`, revocación de sesión (denylist de JWT), test del flujo de restore con GCP mockeado.
 </content>
