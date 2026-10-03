@@ -60,28 +60,50 @@ export function dirPrefix(prefix) {
   return p ? `${p}/` : '';
 }
 
+/** Nombre de una subcarpeta a partir del prefijo devuelto por GCS ('dir/2026/' -> '2026'). */
+export function folderName(fullPrefix, dir) {
+  return String(fullPrefix).slice(dir.length).replace(/\/+$/, '');
+}
+
 /**
- * Lista los backups que están DIRECTAMENTE en la carpeta gs://bucket/prefix
- * (no en subcarpetas), como el script original (BUCKET_PATH/<archivo>).
- * @returns [{ name, fileName, sizeBytes, updated }]
+ * Lista UN nivel de la carpeta gs://bucket/prefix: sus archivos y sus subcarpetas
+ * (como el navegador de la consola de GCS). Pagina a mano para no perder las
+ * subcarpetas (`prefixes`), que la autopaginación de la librería no acumula.
+ * @returns {{ files: [{ name, fileName, sizeBytes, updated }], folders: string[] }}
  */
-export async function listBackups(gsUri) {
+export async function listFolder(gsUri) {
   const { bucket, prefix } = parseGsUri(gsUri);
+  const dir = dirPrefix(prefix); // 'datos' -> 'datos/': no mezcla 'datos-old/'
   try {
     const storage = await getStorage();
-    // delimiter '/': solo el nivel de la carpeta; dirPrefix evita que 'datos' liste también 'datos-old/'.
-    const [files] = await storage.bucket(bucket).getFiles({ prefix: dirPrefix(prefix), delimiter: '/' });
-    return files
-      .filter((f) => !f.name.endsWith('/'))
-      .map((f) => ({
-        name: f.name,
-        fileName: f.name.split('/').pop(),
-        sizeBytes: Number(f.metadata.size ?? 0),
-        updated: f.metadata.updated ?? null,
-      }));
+    const files = [];
+    const folders = new Set();
+    let query = { prefix: dir, delimiter: '/', autoPaginate: false, maxResults: 1000 };
+    while (query) {
+      const [page, next, resp] = await storage.bucket(bucket).getFiles(query);
+      files.push(...page);
+      for (const p of resp?.prefixes ?? []) folders.add(folderName(p, dir));
+      query = next;
+    }
+    return {
+      files: files
+        .filter((f) => !f.name.endsWith('/')) // marcadores de carpeta vacíos
+        .map((f) => ({
+          name: f.name,
+          fileName: f.name.split('/').pop(),
+          sizeBytes: Number(f.metadata.size ?? 0),
+          updated: f.metadata.updated ?? null,
+        })),
+      folders: [...folders].filter(Boolean).sort((x, y) => x.localeCompare(y)),
+    };
   } catch (err) {
     throw new InfraError(`No se pudo listar el bucket ${bucket}`, { code: 'GCS_LIST_FAILED', cause: err });
   }
+}
+
+/** Archivos que están DIRECTAMENTE en la carpeta (BUCKET_PATH/<archivo>, como el script original). */
+export async function listBackups(gsUri) {
+  return (await listFolder(gsUri)).files;
 }
 
 /**

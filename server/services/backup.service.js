@@ -2,6 +2,7 @@
 import * as catalogRepo from '../data/repositories/catalog.repo.js';
 import { createAdapter } from '../engines/index.js';
 import { NotFoundError } from '../domain/errors.js';
+import * as storage from '../gcp/storage.client.js';
 
 async function resolveContext(instanceId, bucketPath) {
   const instance = await catalogRepo.getInstanceById(instanceId);
@@ -14,13 +15,22 @@ async function resolveContext(instanceId, bucketPath) {
   };
 }
 
+/**
+ * Contenido de una carpeta del bucket: subcarpetas (para navegar) y los backups
+ * con extensión válida para el motor de la instancia.
+ * @returns {{ files, folders }}
+ */
 export async function listBackups(instanceId, bucketPath) {
   const ctx = await resolveContext(instanceId, bucketPath);
   const adapter = createAdapter(ctx.instance.engine, ctx);
-  const files = await adapter.listBackups();
-  return files.filter((f) =>
-    adapter.acceptedExtensions.some((ext) => f.fileName.toLowerCase().endsWith(ext)),
-  );
+  storage.parseGsUri(bucketPath); // valida formato gs://
+  const { files, folders } = await storage.listFolder(bucketPath);
+  return {
+    folders,
+    files: files.filter((f) =>
+      adapter.acceptedExtensions.some((ext) => f.fileName.toLowerCase().endsWith(ext)),
+    ),
+  };
 }
 
 export async function validateBackup(instanceId, bucketPath, fileName) {
