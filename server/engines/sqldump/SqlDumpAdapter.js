@@ -43,28 +43,8 @@ export class SqlDumpAdapter extends EngineAdapter {
 
   // Flujo destructivo: eliminar la BD y recrearla vacía para recibir el import.
   async prepareTarget(targetDb) {
-    await this._dropDatabase(targetDb);
+    await this.dropIfExists(targetDb);
     await this._createEmptyDatabase(targetDb);
-  }
-
-  async _dropDatabase(targetDb) {
-    await this.ctx.log('info', `🧹 Eliminando BD existente: ${targetDb}`);
-    const op = await csql.deleteDatabase({
-      project: this.ctx.project,
-      instance: this.ctx.instance.instance_name,
-      database: targetDb,
-    });
-    if (op === null) {
-      await this.ctx.log('info', `ℹ️ La BD ${targetDb} no existía; nada que eliminar.`);
-      return;
-    }
-    const res = await this._wait(op);
-    if (!res.ok) {
-      throw new InfraError(`No se pudo eliminar la BD ${targetDb}`, {
-        code: 'DROP_FAILED',
-        cause: res.error,
-      });
-    }
   }
 
   async _createEmptyDatabase(targetDb) {

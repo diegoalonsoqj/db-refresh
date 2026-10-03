@@ -7,6 +7,7 @@ import { listActiveForInstance } from '../services/postScripts.service.js';
 import { createAdapter } from '../engines/index.js';
 import { publish } from './progress.js';
 import { DomainError } from '../domain/errors.js';
+import { describeGcpError } from '../gcp/cloudsql.client.js';
 
 /** Crea el logger de eventos ligado a un job (persiste + publica para SSE). */
 function makeLogger(jobId) {
@@ -57,19 +58,23 @@ export async function runJob(job, logger) {
     await log('info', `✅ ${items.length} backup(s) validados en GCS.`);
     await adapter.preflight();
   } catch (err) {
-    await log('error', `❌ Pre-check fallido, no se toca ninguna BD: ${err.message}`);
+    const reason = describeGcpError(err.cause);
+    const message = reason ? `${err.message} — ${reason}` : err.message;
+    logger?.error({ err, jobId: job.id }, 'Pre-check fallido');
+    await log('error', `❌ Pre-check fallido, no se toca ninguna BD: ${message}`);
     for (const item of items) {
       await jobsRepo.updateItemStatus(item.id, 'failed', {
-        errorMessage: `Pre-check: ${err.message}`,
+        errorMessage: `Pre-check: ${message}`,
         markFinished: true,
       });
     }
-    await jobsRepo.finishJob(job.id, 'failed', `Pre-check: ${err.message}`);
+    await jobsRepo.finishJob(job.id, 'failed', `Pre-check: ${message}`);
     await log('info', '=== 🏁 Proceso completado ===');
     return;
   }
 
   let allOk = true;
+  let firstError = null; // se muestra como error del job (además del log)
 
   for (const [idx, item] of items.entries()) {
     try {
@@ -94,18 +99,24 @@ export async function runJob(job, logger) {
         await log('info', `✅ Restauración OK: ${item.target_db}`, { itemId: item.id });
       } else {
         allOk = false;
-        const msg = JSON.stringify(res.error ?? {});
+        const msg = describeGcpError(res.error) || JSON.stringify(res.error ?? {});
+        firstError ??= `${item.target_db}: ${msg}`;
         await jobsRepo.updateItemStatus(item.id, 'failed', { errorMessage: msg, markFinished: true });
         await log('error', `❌ Restauración fallida: ${item.target_db} — ${msg}`, { itemId: item.id });
       }
     } catch (err) {
       allOk = false;
       const domain = err instanceof DomainError;
+      // El motivo real (p.ej. el error de la operación de Cloud SQL) va en `cause`.
+      const reason = describeGcpError(err.cause);
+      const message = reason ? `${err.message} — ${reason}` : err.message;
+      firstError ??= `${item.target_db}: ${message}`;
+      logger?.error({ err, jobId: job.id, itemId: item.id }, 'Item fallido');
       await jobsRepo.updateItemStatus(item.id, 'failed', {
-        errorMessage: err.message,
+        errorMessage: message,
         markFinished: true,
       });
-      await log(domain ? 'warning' : 'error', `❌ ${item.target_db}: ${err.message}`, {
+      await log(domain ? 'warning' : 'error', `❌ ${item.target_db}: ${message}`, {
         itemId: item.id,
       });
     }
@@ -120,12 +131,13 @@ export async function runJob(job, logger) {
       await adapter.runPostScripts();
     } catch (err) {
       allOk = false;
+      firstError ??= `Post-scripts: ${err.message}`;
       await log('error', `❌ Post-scripts fallaron: ${err.message}`);
     }
   } else {
     await log('warning', '⚠️ No se ejecutan post-scripts: hubo restauraciones fallidas.');
   }
 
-  await jobsRepo.finishJob(job.id, allOk ? 'succeeded' : 'failed', allOk ? null : 'Ver eventos del job');
+  await jobsRepo.finishJob(job.id, allOk ? 'succeeded' : 'failed', allOk ? null : (firstError ?? 'Ver eventos del job'));
   await log('info', '=== 🏁 Proceso completado ===');
 }

@@ -2,7 +2,7 @@ import '../test-support/env.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateMapping, isSystemDatabase, supportsImportUser } from '../server/domain/restoreMapping.js';
-import { buildImportContext } from '../server/gcp/cloudsql.client.js';
+import { buildImportContext, describeGcpError } from '../server/gcp/cloudsql.client.js';
 import { ValidationError } from '../server/domain/errors.js';
 
 test('validateMapping: normaliza y deja importUser en null si no viene', () => {
@@ -43,4 +43,11 @@ test('buildImportContext: importUser solo si se indica', () => {
   assert.equal('importUser' in buildImportContext(base), false);
   assert.equal(buildImportContext({ ...base, importUser: 'owner' }).importUser, 'owner');
   assert.equal(buildImportContext(base).kind, 'sql#importContext');
+});
+
+test('describeGcpError: operación, HTTP de googleapis y Error genérico', () => {
+  assert.equal(describeGcpError({ errors: [{ code: 'ERROR_RDBMS', message: 'database in use' }] }), 'ERROR_RDBMS: database in use');
+  assert.equal(describeGcpError({ response: { status: 403, data: { error: { message: 'Not authorized' } } } }), '403 Not authorized');
+  assert.equal(describeGcpError(new Error('boom')), 'boom');
+  assert.equal(describeGcpError(undefined), '');
 });

@@ -42,6 +42,34 @@ export class EngineAdapter {
     throw new DomainError('restore no implementado');
   }
 
+  /**
+   * DROP destructivo (databases.delete) solo si la BD existe: una BD nueva no se
+   * intenta borrar. Lanza DROP_FAILED con el motivo que devuelve GCP.
+   */
+  async dropIfExists(targetDb) {
+    const where = { project: this.ctx.project, instance: this.ctx.instance.instance_name, database: targetDb };
+    if (!(await csql.databaseExists(where))) {
+      await this.ctx.log('info', `ℹ️ La BD ${targetDb} no existe en la instancia: se creará con el restore.`);
+      return;
+    }
+    await this.ctx.log('info', `🧹 Eliminando BD existente: ${targetDb}`);
+    const op = await csql.deleteDatabase(where);
+    if (op === null) {
+      await this.ctx.log('info', `ℹ️ La BD ${targetDb} no existía; nada que eliminar.`);
+      return;
+    }
+    const res = await csql.waitForOperation(
+      { project: this.ctx.project, operation: op },
+      {
+        timeoutSeconds: config.worker.operationTimeoutSeconds,
+        pollIntervalSeconds: config.worker.operationPollIntervalSeconds,
+      },
+    );
+    if (!res.ok) {
+      throw new InfraError(`No se pudo eliminar la BD ${targetDb}`, { code: 'DROP_FAILED', cause: res.error });
+    }
+  }
+
   get postScripts() {
     return this.ctx.postScripts ?? [];
   }
