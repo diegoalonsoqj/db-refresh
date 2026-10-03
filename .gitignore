@@ -26,3 +26,6 @@ server/logs/
 .DS_Store
 coverage/
 .vite/
+
+# PM2
+logs/

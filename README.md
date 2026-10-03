@@ -125,14 +125,19 @@ npm --prefix web run dev    # frontend en :5173 (proxya /api -> la API)
 
 Abre **http://localhost:5173**.
 
-### Producción (esquema básico)
+### Producción (PM2)
+
+`ecosystem.config.cjs` define 3 procesos (`db-refresh-api`, `db-refresh-worker`, `db-refresh-scheduler`) con autorestart, tope de **2 GB por proceso** (`max_memory_restart: 2G`, heap V8 en 1792 MB para que el GC actúe antes) y logs en `logs/`.
 
 ```bash
-npm --prefix web run build  # genera web/dist (servir con Nginx/CDN)
-NODE_ENV=production npm start
-NODE_ENV=production npm run worker
-NODE_ENV=production npm run scheduler
+npm install -g pm2
+npm --prefix web run build                      # genera web/dist (servir con Nginx/CDN)
+pm2 start ecosystem.config.cjs --env production
+pm2 save                                        # guarda la lista de procesos
+pm2 startup                                     # una vez: ejecuta el comando que imprime (systemd) -> arranca al reiniciar el host
 ```
+
+En Windows `pm2 startup` no está soportado: registrar PM2 como servicio con `pm2-installer` (o `pm2-windows-startup`) y luego `pm2 save`. Tras cambiar el ecosystem: `pm2 reload ecosystem.config.cjs --env production && pm2 save`. El worker tiene `kill_timeout` de 15 min: un `reload/stop` espera a que termine el restore en curso.
 
 En producción: servir tras **HTTPS** (la cookie de sesión usa `Secure`), un **reverse proxy** delante de la API, y los secretos desde **Secret Manager**.
 
