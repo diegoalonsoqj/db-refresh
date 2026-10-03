@@ -1,9 +1,13 @@
 // Servicio de catálogo: reglas de negocio y validación sobre proyectos,
 // instancias, buckets y su relación N:N. Traduce errores de integridad de PG.
 import * as repo from '../data/repositories/catalog.repo.js';
+import * as postScriptsRepo from '../data/repositories/postScripts.repo.js';
 import { mapPgError } from '../data/pgErrors.js';
-import { NotFoundError } from '../domain/errors.js';
-import { assertNonEmpty, assertOneOf } from '../lib/validation.js';
+import { NotFoundError, ValidationError } from '../domain/errors.js';
+import { missingSqlCredentials } from '../domain/instance.js';
+import { assertNonEmpty, assertOneOf, optionalString } from '../lib/validation.js';
+import { parseSecretRef } from '../lib/secrets.js';
+import { normalizeBucketLocation } from '../gcp/storage.client.js';
 
 const ENGINES = ['sqlserver', 'postgres', 'mysql']; // = enum engine_type
 
@@ -58,17 +62,44 @@ async function validateInstanceInput(input) {
   if (!(await repo.getProjectById(projectRef))) {
     throw new NotFoundError(`Proyecto ${projectRef} no encontrado`);
   }
+  // Conexión SQL (host/usuario/secret_ref): opcional, solo para post-scripts.
+  // Todo o nada, para no guardar una conexión a medias.
+  const dbHost = optionalString(input.dbHost, 'dbHost');
+  const adminUser = optionalString(input.adminUser, 'adminUser');
+  // secret_ref es una REFERENCIA (p.ej. Secret Manager), nunca el password.
+  const secretRef = optionalString(input.secretRef, 'secretRef');
+  const given = [dbHost, adminUser, secretRef].filter(Boolean).length;
+  if (given > 0 && given < 3) {
+    throw new ValidationError(
+      'Conexión SQL incompleta: indica host, usuario admin y secret ref, o deja los tres vacíos',
+    );
+  }
+  if (secretRef) parseSecretRef(secretRef); // valida el formato (sm://... | env:NOMBRE)
   return {
     projectRef,
     instanceName: assertNonEmpty(input.instanceName, 'instanceName'),
     engine: assertOneOf(input.engine, ENGINES, 'engine'),
-    dbHost: assertNonEmpty(input.dbHost, 'dbHost'),
-    dbPort: input.dbPort ?? null,
-    adminUser: assertNonEmpty(input.adminUser, 'adminUser'),
-    // secret_ref es una REFERENCIA (p.ej. Secret Manager), nunca el password.
-    secretRef: assertNonEmpty(input.secretRef, 'secretRef'),
+    dbHost,
+    dbPort: dbHost ? input.dbPort || null : null,
+    adminUser,
+    secretRef,
     isActive: input.isActive ?? true,
   };
+}
+
+// Sin conexión SQL no se pueden ejecutar post-scripts: impedir quitarla si hay activos.
+async function assertCredentialsForActiveScripts(instanceId, data) {
+  const missing = missingSqlCredentials({
+    db_host: data.dbHost, admin_user: data.adminUser, secret_ref: data.secretRef,
+  });
+  if (!missing.length) return;
+  const active = await postScriptsRepo.listForInstance(instanceId, { onlyActive: true });
+  if (active.length) {
+    throw new ValidationError(
+      `La instancia tiene ${active.length} post-script(s) activo(s) que necesitan la conexión SQL; ` +
+        'desactívalos antes de quitarla',
+    );
+  }
 }
 
 export async function createInstance(input) {
@@ -83,6 +114,7 @@ export async function createInstance(input) {
 export async function updateInstance(id, input) {
   await getInstance(id);
   const data = await validateInstanceInput(input);
+  await assertCredentialsForActiveScripts(id, data);
   try {
     return await repo.updateInstance(id, data);
   } catch (err) {
@@ -113,10 +145,14 @@ async function validateBucketInput(input) {
   if (!(await repo.getProjectById(projectRef))) {
     throw new NotFoundError(`Proyecto ${projectRef} no encontrado`);
   }
+  const { bucketName, basePrefix } = normalizeBucketLocation(
+    assertNonEmpty(input.bucketName, 'bucketName'),
+    optionalString(input.basePrefix, 'basePrefix'),
+  );
   return {
     projectRef,
-    bucketName: assertNonEmpty(input.bucketName, 'bucketName'),
-    basePrefix: input.basePrefix ?? null,
+    bucketName,
+    basePrefix,
     description: input.description ?? null,
     isActive: input.isActive ?? true,
   };

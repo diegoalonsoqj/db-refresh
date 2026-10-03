@@ -5,6 +5,7 @@
 //  - progreso emitido como job_events (feed SSE).
 import { EngineAdapter } from '../EngineAdapter.js';
 import { DomainError, InfraError } from '../../domain/errors.js';
+import { missingSqlCredentials } from '../../domain/instance.js';
 import * as storage from '../../gcp/storage.client.js';
 import * as csql from '../../gcp/cloudsql.client.js';
 import { config } from '../../config/index.js';
@@ -100,6 +101,14 @@ export class SqlServerAdapter extends EngineAdapter {
   // la database_name de cada script porque suele ser una BD que aún no existe
   // (se crea con el restore).
   async verifyPostScriptsConnection() {
+    const missing = missingSqlCredentials(this.ctx.instance);
+    if (missing.length) {
+      throw new DomainError(
+        `La instancia ${this.ctx.instance.instance_name} tiene post-scripts activos pero no tiene ` +
+          `conexión SQL (falta: ${missing.join(', ')}). Configúrala en Catálogo → Instancias.`,
+        { code: 'POST_SCRIPTS_NO_CREDENTIALS' },
+      );
+    }
     await withConnection(this.ctx.instance, null, (pool) => runBatch(pool, 'SELECT 1'));
   }
 

@@ -35,14 +35,20 @@ CREATE TABLE IF NOT EXISTS gcp_instances (
   project_ref   uuid NOT NULL REFERENCES gcp_projects(id) ON DELETE RESTRICT,
   instance_name text NOT NULL,
   engine        engine_type NOT NULL,
-  db_host       text NOT NULL,
+  -- Conexión SQL: solo para post-scripts (el restore va por el Admin API).
+  db_host       text,
   db_port       int,
-  admin_user    text NOT NULL,
-  secret_ref    text NOT NULL,          -- referencia a Secret Manager, NUNCA el password
+  admin_user    text,
+  secret_ref    text,                   -- referencia a Secret Manager, NUNCA el password
   is_active     boolean NOT NULL DEFAULT true,
   created_at    timestamptz NOT NULL DEFAULT now(),
   UNIQUE (project_ref, instance_name)
 );
+
+-- Migración idempotente: la conexión SQL pasa a ser opcional (solo post-scripts).
+ALTER TABLE gcp_instances ALTER COLUMN db_host    DROP NOT NULL;
+ALTER TABLE gcp_instances ALTER COLUMN admin_user DROP NOT NULL;
+ALTER TABLE gcp_instances ALTER COLUMN secret_ref DROP NOT NULL;
 
 CREATE TABLE IF NOT EXISTS gcp_buckets (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
