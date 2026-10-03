@@ -150,11 +150,15 @@ test('post-scripts por instancia (admin): CRUD, validación, 409 y RBAC viewer 4
   if (!dbOk) return t.skip('BD no disponible');
   const { cookie } = await login(ADMIN, PW);
   const proj = await req('POST', '/projects', { cookie, body: { projectId: `${PROJ}-ps` } });
+  const cred = await req('POST', '/credentials', {
+    cookie, body: { name: `${PROJ}-ps-cred`, engine: 'sqlserver', username: 'sqlserver', secretKind: 'ref', secretRef: 'env:ITEST_NOPE' },
+  });
+  assert.equal(cred.status, 201);
   const inst = await req('POST', '/instances', {
     cookie,
     body: {
       projectRef: proj.data.id, instanceName: 'itest-mssql', engine: 'sqlserver',
-      dbHost: '10.0.0.1', adminUser: 'sqlserver', secretRef: 'env:ITEST_NOPE',
+      dbHost: '10.0.0.1', credentialRef: cred.data.id,
     },
   });
   assert.equal(inst.status, 201);
@@ -185,6 +189,7 @@ test('post-scripts por instancia (admin): CRUD, validación, 409 y RBAC viewer 4
   } finally {
     // ON DELETE CASCADE limpia los post-scripts que queden.
     await req('DELETE', `/instances/${inst.data.id}`, { cookie });
+    await req('DELETE', `/credentials/${cred.data.id}`, { cookie });
     await req('DELETE', `/projects/${proj.data.id}`, { cookie });
   }
 });
@@ -193,23 +198,27 @@ test('instancias sin conexión SQL (solo restore) y buckets con ruta gs:// pegad
   if (!dbOk) return t.skip('BD no disponible');
   const { cookie } = await login(ADMIN, PW);
   const proj = await req('POST', '/projects', { cookie, body: { projectId: `${PROJ}-nc` } });
-  const ids = { inst: null, bucket: null };
+  const ids = { inst: null, bucket: null, cred: null };
   try {
     const projectRef = proj.data.id;
-    // Sin host/usuario/secret: válida (el import va por el Admin API).
+    const cred = await req('POST', '/credentials', {
+      cookie, body: { name: `${PROJ}-nc-cred`, engine: 'sqlserver', username: 'sqlserver', password: 'ItestPw-123' },
+    });
+    ids.cred = cred.data.id;
+    // Sin host/credencial: válida (el import va por el Admin API).
     const inst = await req('POST', '/instances', {
       cookie, body: { projectRef, instanceName: 'itest-nocreds', engine: 'sqlserver' },
     });
     assert.equal(inst.status, 201);
     ids.inst = inst.data.id;
     assert.equal(inst.data.db_host, null);
-    assert.equal(inst.data.secret_ref, null);
+    assert.equal(inst.data.credential_ref, null);
 
-    // Conexión a medias o secret_ref mal formado: rechazados.
-    const partial = { projectRef, instanceName: 'itest-partial', engine: 'sqlserver', dbHost: '10.0.0.1' };
+    // Credencial sin host o de otro motor: rechazadas.
+    const partial = { projectRef, instanceName: 'itest-partial', engine: 'sqlserver', credentialRef: ids.cred };
     assert.equal((await req('POST', '/instances', { cookie, body: partial })).status, 422);
-    const badRef = { ...partial, adminUser: 'sqlserver', secretRef: 'P4ssw0rd' };
-    assert.equal((await req('POST', '/instances', { cookie, body: badRef })).status, 400);
+    const otherEngine = { ...partial, engine: 'postgres', dbHost: '10.0.0.1' };
+    assert.equal((await req('POST', '/instances', { cookie, body: otherEngine })).status, 422);
 
     // Post-script activo sin conexión SQL: 422; inactivo: permitido.
     const ps = `/instances/${ids.inst}/post-scripts`;
@@ -220,7 +229,7 @@ test('instancias sin conexión SQL (solo restore) y buckets con ruta gs:// pegad
 
     // Con conexión completa se puede activar; quitarla con scripts activos: 422.
     const creds = { projectRef, instanceName: 'itest-nocreds', engine: 'sqlserver',
-      dbHost: '10.0.0.1', adminUser: 'sqlserver', secretRef: 'env:ITEST_NOPE' };
+      dbHost: '10.0.0.1', credentialRef: ids.cred };
     assert.equal((await req('PUT', `/instances/${ids.inst}`, { cookie, body: creds })).status, 200);
     assert.equal((await req('PUT', `${ps}/${inactive.data.id}`, { cookie, body: script })).status, 200);
     const strip = { projectRef, instanceName: 'itest-nocreds', engine: 'sqlserver' };
@@ -236,6 +245,7 @@ test('instancias sin conexión SQL (solo restore) y buckets con ruta gs:// pegad
     assert.equal(b.data.base_prefix, 'homologaciones');
   } finally {
     if (ids.inst) await req('DELETE', `/instances/${ids.inst}`, { cookie });
+    if (ids.cred) await req('DELETE', `/credentials/${ids.cred}`, { cookie });
     if (ids.bucket) await req('DELETE', `/buckets/${ids.bucket}`, { cookie });
     await req('DELETE', `/projects/${proj.data.id}`, { cookie });
   }
@@ -267,6 +277,58 @@ test('restore: validación de owner/BD de sistema y RBAC de BDs/usuarios en vivo
   } finally {
     if (instId) await req('DELETE', `/instances/${instId}`, { cookie });
     await req('DELETE', `/projects/${proj.data.id}`, { cookie });
+  }
+});
+
+test('credenciales SQL (admin): CRUD sin exponer la contraseña, en uso 409 y RBAC', async (t) => {
+  if (!dbOk) return t.skip('BD no disponible');
+  const { cookie } = await login(ADMIN, PW);
+  const ids = { cred: null, inst: null, proj: null };
+  try {
+    const created = await req('POST', '/credentials', {
+      cookie, body: { name: `${PROJ}-cred`, engine: 'postgres', username: 'postgres', password: 'Sup3r-Secreta' },
+    });
+    assert.equal(created.status, 201);
+    ids.cred = created.data.id;
+    assert.equal(created.data.has_password, true);
+    assert.equal(JSON.stringify(created.data).includes('Sup3r-Secreta'), false);
+    assert.equal('password_enc' in created.data, false);
+
+    // Duplicado 409; sin password 422; listado sin secreto.
+    assert.equal((await req('POST', '/credentials', { cookie, body: { name: `${PROJ}-cred`, engine: 'postgres', username: 'x', password: 'y' } })).status, 409);
+    assert.equal((await req('POST', '/credentials', { cookie, body: { name: `${PROJ}-cred2`, engine: 'postgres', username: 'x' } })).status, 422);
+    const list = await req('GET', '/credentials', { cookie });
+    assert.equal(JSON.stringify(list.data).includes('Sup3r-Secreta'), false);
+
+    // Editar sin password conserva la guardada.
+    const upd = await req('PUT', `/credentials/${ids.cred}`, { cookie, body: { name: `${PROJ}-cred`, engine: 'postgres', username: 'app_admin' } });
+    assert.equal(upd.status, 200);
+    assert.equal(upd.data.username, 'app_admin');
+    assert.equal(upd.data.has_password, true);
+
+    // En uso por una instancia: no se puede borrar ni cambiar de motor.
+    const proj = await req('POST', '/projects', { cookie, body: { projectId: `${PROJ}-cr` } });
+    ids.proj = proj.data.id;
+    const inst = await req('POST', '/instances', {
+      cookie, body: { projectRef: ids.proj, instanceName: 'itest-pg', engine: 'postgres', dbHost: '10.0.0.9', credentialRef: ids.cred },
+    });
+    assert.equal(inst.status, 201);
+    ids.inst = inst.data.id;
+    assert.equal(inst.data.credential_name, `${PROJ}-cred`);
+    assert.equal((await req('DELETE', `/credentials/${ids.cred}`, { cookie })).status, 409);
+    assert.equal((await req('PUT', `/credentials/${ids.cred}`, { cookie, body: { name: `${PROJ}-cred`, engine: 'mysql', username: 'x' } })).status, 422);
+
+    // Probar conexión: host obligatorio; con host inalcanzable responde ok:false (no 500).
+    assert.equal((await req('POST', `/credentials/${ids.cred}/test`, { cookie, body: {} })).status, 422);
+
+    // RBAC: un viewer no ve credenciales.
+    const viewer = await login(VIEWER, PW);
+    assert.equal((await req('GET', '/credentials', { cookie: viewer.cookie })).status, 403);
+    assert.equal((await req('POST', `/instances/${ids.inst}/test-connection`, { cookie: viewer.cookie })).status, 403);
+  } finally {
+    if (ids.inst) await req('DELETE', `/instances/${ids.inst}`, { cookie });
+    if (ids.cred) await req('DELETE', `/credentials/${ids.cred}`, { cookie });
+    if (ids.proj) await req('DELETE', `/projects/${ids.proj}`, { cookie });
   }
 });
 

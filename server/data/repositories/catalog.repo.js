@@ -41,13 +41,17 @@ export async function deleteProject(id) {
 }
 
 // --- Instancias ------------------------------------------------------------
+// La credencial se expone solo por nombre/usuario (nunca su secreto).
+const INSTANCE_COLS = `i.id, i.project_ref, i.instance_name, i.engine, i.db_host, i.db_port,
+            i.credential_ref, c.name AS credential_name, c.username AS credential_username,
+            i.is_active, i.created_at, p.project_id`;
+
 export async function getInstanceById(id) {
   const { rows } = await query(
-    `SELECT i.id, i.project_ref, i.instance_name, i.engine, i.db_host, i.db_port,
-            i.admin_user, i.secret_ref, i.is_active, i.created_at,
-            p.project_id
+    `SELECT ${INSTANCE_COLS}
        FROM gcp_instances i
        JOIN gcp_projects p ON p.id = i.project_ref
+       LEFT JOIN sql_credentials c ON c.id = i.credential_ref
       WHERE i.id = $1`,
     [id],
   );
@@ -56,10 +60,10 @@ export async function getInstanceById(id) {
 
 export async function listInstances() {
   const { rows } = await query(
-    `SELECT i.id, i.project_ref, i.instance_name, i.engine, i.db_host, i.db_port,
-            i.admin_user, i.secret_ref, i.is_active, i.created_at, p.project_id
+    `SELECT ${INSTANCE_COLS}
        FROM gcp_instances i
        JOIN gcp_projects p ON p.id = i.project_ref
+       LEFT JOIN sql_credentials c ON c.id = i.credential_ref
       ORDER BY p.project_id, i.instance_name`,
   );
   return rows;
@@ -68,30 +72,30 @@ export async function listInstances() {
 export async function createInstance(inst) {
   const { rows } = await query(
     `INSERT INTO gcp_instances
-       (project_ref, instance_name, engine, db_host, db_port, admin_user, secret_ref, is_active)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     RETURNING *`,
+       (project_ref, instance_name, engine, db_host, db_port, credential_ref, is_active)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id`,
     [
       inst.projectRef, inst.instanceName, inst.engine, inst.dbHost,
-      inst.dbPort ?? null, inst.adminUser, inst.secretRef, inst.isActive ?? true,
+      inst.dbPort ?? null, inst.credentialRef ?? null, inst.isActive ?? true,
     ],
   );
-  return rows[0];
+  return getInstanceById(rows[0].id);
 }
 
 export async function updateInstance(id, inst) {
   const { rows } = await query(
     `UPDATE gcp_instances
         SET project_ref = $2, instance_name = $3, engine = $4, db_host = $5,
-            db_port = $6, admin_user = $7, secret_ref = $8, is_active = $9
+            db_port = $6, credential_ref = $7, is_active = $8
       WHERE id = $1
-      RETURNING *`,
+      RETURNING id`,
     [
       id, inst.projectRef, inst.instanceName, inst.engine, inst.dbHost,
-      inst.dbPort ?? null, inst.adminUser, inst.secretRef, inst.isActive ?? true,
+      inst.dbPort ?? null, inst.credentialRef ?? null, inst.isActive ?? true,
     ],
   );
-  return rows[0] ?? null;
+  return rows[0] ? getInstanceById(id) : null;
 }
 
 export async function deleteInstance(id) {

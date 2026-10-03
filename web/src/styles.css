@@ -440,3 +440,4 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 .btn.icon-btn { padding-inline: .45rem; }
 .login-brand { display: flex; align-items: center; gap: .5rem; }
 .login-brand svg { width: 24px; height: 24px; }
+.table td.actions .btn { white-space: nowrap; }

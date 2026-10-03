@@ -5,7 +5,7 @@ import ChangePasswordModal from './ChangePasswordModal.jsx';
 import {
   IconHistory, IconLaunch, IconSchedule, IconCatalog, IconUsers,
   IconAudit, IconSettings, IconServer, IconKey, IconLogout,
-  IconChevronLeft, IconChevronDown,
+  IconChevronLeft, IconChevronDown, IconLock,
 } from './icons.jsx';
 
 const COLLAPSE_KEY = 'dbrefresh.sidebarCollapsed';
@@ -116,6 +116,7 @@ export default function Layout() {
     { to: '/launch', label: 'Lanzar restore', Icon: IconLaunch, show: canLaunch },
     { to: '/schedules', label: 'Programadas', Icon: IconSchedule, show: canLaunch },
     { to: '/catalog', label: 'Catálogo', Icon: IconCatalog, show: isAdmin },
+    { to: '/credentials', label: 'Credenciales', Icon: IconLock, show: isAdmin },
     { to: '/users', label: 'Usuarios', Icon: IconUsers, show: isAdmin },
     { to: '/audit', label: 'Auditoría', Icon: IconAudit, show: isAdmin },
     { to: '/settings', label: 'Ajustes', Icon: IconSettings, show: isAdmin },

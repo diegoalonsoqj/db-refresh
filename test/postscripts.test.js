@@ -8,6 +8,8 @@ import { EngineAdapter } from '../server/engines/EngineAdapter.js';
 import { DomainError } from '../server/domain/errors.js';
 import { missingSqlCredentials } from '../server/domain/instance.js';
 import { SqlServerAdapter } from '../server/engines/sqlserver/SqlServerAdapter.js';
+import { PostgresAdapter } from '../server/engines/postgres/PostgresAdapter.js';
+import { sqlRunnerFor } from '../server/engines/sql/runners.js';
 
 test('splitSqlBatches: separa por GO en línea sola (LF, CRLF, mayúsculas, ;)', () => {
   const sql = "PRINT 'a';\nGO\nEXEC x;\r\n  go  \r\nSELECT 1;\nGO;\n";
@@ -69,20 +71,36 @@ test('EngineAdapter: post-scripts en motor sin soporte fallan; sin scripts es no
   await assert.rejects(new EngineAdapter(ctx).runPostScripts(), DomainError);
 });
 
-test('missingSqlCredentials: lista lo que falta para conectar por SQL', () => {
-  assert.deepEqual(missingSqlCredentials({ db_host: 'h', admin_user: 'u', secret_ref: 'env:X' }), []);
-  assert.deepEqual(missingSqlCredentials({ db_host: 'h' }), ['admin_user', 'secret_ref']);
-  assert.deepEqual(missingSqlCredentials(null), ['db_host', 'admin_user', 'secret_ref']);
+test('missingSqlCredentials: host + credencial', () => {
+  assert.deepEqual(missingSqlCredentials({ db_host: 'h', credential_ref: 'c' }), []);
+  assert.deepEqual(missingSqlCredentials({ db_host: 'h' }), ['credential_ref']);
+  assert.deepEqual(missingSqlCredentials(null), ['db_host', 'credential_ref']);
 });
 
-test('SqlServerAdapter: post-scripts sin conexión SQL fallan en el pre-check sin conectar', async () => {
+test('sqlRunner: los 3 motores tienen cliente SQL para post-scripts', () => {
+  for (const engine of ['sqlserver', 'postgres', 'mysql']) {
+    const runner = sqlRunnerFor(engine);
+    assert.equal(typeof runner.withConnection, 'function', engine);
+    assert.equal(typeof runner.runBatch, 'function', engine);
+  }
+  assert.equal(sqlRunnerFor('oracle'), null);
+  assert.equal(sqlRunnerFor('postgres').defaultDatabase, 'postgres');
+  assert.equal(sqlRunnerFor('sqlserver').defaultDatabase, 'master');
+});
+
+test('post-scripts sin conexión SQL fallan en el pre-check sin conectar (SQL Server y PostgreSQL)', async () => {
   const ctx = {
-    instance: { instance_name: 'i1', db_host: null, admin_user: null, secret_ref: null },
+    instance: { instance_name: 'i1', engine: 'sqlserver', db_host: null, credential_ref: null },
     postScripts: [{ name: 's', sql_text: 'SELECT 1' }],
     log: async () => {},
   };
   await assert.rejects(
     new SqlServerAdapter(ctx).verifyPostScriptsConnection(),
+    (err) => err instanceof DomainError && err.code === 'POST_SCRIPTS_NO_CREDENTIALS',
+  );
+  const pgCtx = { ...ctx, instance: { ...ctx.instance, engine: 'postgres', db_host: '10.0.0.1' } };
+  await assert.rejects(
+    new PostgresAdapter(pgCtx).verifyPostScriptsConnection(),
     (err) => err instanceof DomainError && err.code === 'POST_SCRIPTS_NO_CREDENTIALS',
   );
 });

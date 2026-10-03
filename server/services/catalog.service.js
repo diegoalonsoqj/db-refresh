@@ -6,10 +6,11 @@ import { mapPgError } from '../data/pgErrors.js';
 import { NotFoundError, ValidationError } from '../domain/errors.js';
 import { missingSqlCredentials } from '../domain/instance.js';
 import { assertNonEmpty, assertOneOf, optionalString } from '../lib/validation.js';
-import { parseSecretRef } from '../lib/secrets.js';
+import * as credentialsRepo from '../data/repositories/credentials.repo.js';
 import { normalizeBucketLocation } from '../gcp/storage.client.js';
 
 const ENGINES = ['sqlserver', 'postgres', 'mysql']; // = enum engine_type
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // --- Proyectos -------------------------------------------------------------
 export const listProjects = () => repo.listProjects();
@@ -62,36 +63,41 @@ async function validateInstanceInput(input) {
   if (!(await repo.getProjectById(projectRef))) {
     throw new NotFoundError(`Proyecto ${projectRef} no encontrado`);
   }
-  // Conexión SQL (host/usuario/secret_ref): opcional, solo para post-scripts.
-  // Todo o nada, para no guardar una conexión a medias.
+  const engine = assertOneOf(input.engine, ENGINES, 'engine');
+  // Conexión SQL (IP privada + credencial): opcional, solo para post-scripts.
+  // Se admite host sin credencial (p.ej. instancias migradas: aún no ejecutan
+  // post-scripts), pero no una credencial sin host al que conectarse.
   const dbHost = optionalString(input.dbHost, 'dbHost');
-  const adminUser = optionalString(input.adminUser, 'adminUser');
-  // secret_ref es una REFERENCIA (p.ej. Secret Manager), nunca el password.
-  const secretRef = optionalString(input.secretRef, 'secretRef');
-  const given = [dbHost, adminUser, secretRef].filter(Boolean).length;
-  if (given > 0 && given < 3) {
-    throw new ValidationError(
-      'Conexión SQL incompleta: indica host, usuario admin y secret ref, o deja los tres vacíos',
-    );
+  const credentialRef = optionalString(input.credentialRef, 'credentialRef');
+  if (credentialRef && !dbHost) {
+    throw new ValidationError('Indica el host (IP privada) de la instancia para usar la credencial');
   }
-  if (secretRef) parseSecretRef(secretRef); // valida el formato (sm://... | env:NOMBRE)
+  if (credentialRef) {
+    if (!UUID_RE.test(credentialRef)) throw new ValidationError(`credentialRef inválido: ${credentialRef}`);
+    const cred = await credentialsRepo.getCredentialById(credentialRef);
+    if (!cred) throw new NotFoundError(`Credencial ${credentialRef} no encontrada`);
+    if (cred.engine !== engine) {
+      throw new ValidationError(`La credencial "${cred.name}" es de ${cred.engine}; la instancia es ${engine}`);
+    }
+  }
+  const dbPort = dbHost && input.dbPort ? Number(input.dbPort) : null;
+  if (dbPort !== null && !(Number.isInteger(dbPort) && dbPort > 0 && dbPort < 65536)) {
+    throw new ValidationError(`dbPort inválido: ${input.dbPort}`);
+  }
   return {
     projectRef,
     instanceName: assertNonEmpty(input.instanceName, 'instanceName'),
-    engine: assertOneOf(input.engine, ENGINES, 'engine'),
+    engine,
     dbHost,
-    dbPort: dbHost ? input.dbPort || null : null,
-    adminUser,
-    secretRef,
+    dbPort,
+    credentialRef,
     isActive: input.isActive ?? true,
   };
 }
 
 // Sin conexión SQL no se pueden ejecutar post-scripts: impedir quitarla si hay activos.
 async function assertCredentialsForActiveScripts(instanceId, data) {
-  const missing = missingSqlCredentials({
-    db_host: data.dbHost, admin_user: data.adminUser, secret_ref: data.secretRef,
-  });
+  const missing = missingSqlCredentials({ db_host: data.dbHost, credential_ref: data.credentialRef });
   if (!missing.length) return;
   const active = await postScriptsRepo.listForInstance(instanceId, { onlyActive: true });
   if (active.length) {

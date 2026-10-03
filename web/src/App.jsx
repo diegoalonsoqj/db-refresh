@@ -10,6 +10,7 @@ import CatalogPage from './pages/CatalogPage.jsx';
 import SchedulesPage from './pages/SchedulesPage.jsx';
 import UsersPage from './pages/UsersPage.jsx';
 import AuditPage from './pages/AuditPage.jsx';
+import CredentialsPage from './pages/CredentialsPage.jsx';
 
 export default function App() {
   return (
@@ -46,6 +47,14 @@ export default function App() {
           element={
             <RequireAuth roles={['admin']}>
               <CatalogPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/credentials"
+          element={
+            <RequireAuth roles={['admin']}>
+              <CredentialsPage />
             </RequireAuth>
           }
         />
