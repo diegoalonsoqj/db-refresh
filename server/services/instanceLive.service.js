@@ -5,6 +5,12 @@ import * as csql from '../gcp/cloudsql.client.js';
 import { getInstance } from './catalog.service.js';
 import { isSystemDatabase, supportsImportUser } from '../domain/restoreMapping.js';
 
+/** Estado de la instancia (encendida / detenida / mantenimiento) para avisar antes de lanzar. */
+export async function getStatus(instanceId) {
+  const instance = await getInstance(instanceId);
+  return csql.getInstanceStatus({ project: instance.project_id, instance: instance.instance_name });
+}
+
 /** BDs de usuario de la instancia (sin las de sistema), ordenadas por nombre. */
 export async function listDatabases(instanceId) {
   const instance = await getInstance(instanceId);
