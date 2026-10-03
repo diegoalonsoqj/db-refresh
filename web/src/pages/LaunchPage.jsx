@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client.js';
+import { useAuth } from '../auth/AuthContext.jsx';
+
+// Extensiones que lista cada motor (deben coincidir con acceptedExtensions del adaptador).
+const EXTENSIONS = { sqlserver: '.bak', postgres: '.sql / .gz', mysql: '.sql / .gz' };
 
 // gs://bucket/prefix a partir de la fila de bucket vinculado.
 function bucketPathOf(b) {
@@ -10,11 +14,12 @@ function bucketPathOf(b) {
 
 export default function LaunchPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [instances, setInstances] = useState([]);
   const [instanceId, setInstanceId] = useState('');
-  const [buckets, setBuckets] = useState([]);
+  const [buckets, setBuckets] = useState(null); // null = cargando / sin instancia
   const [bucketId, setBucketId] = useState('');
-  const [files, setFiles] = useState([]);
+  const [files, setFiles] = useState(null); // null = aún no listados
   const [rows, setRows] = useState([]); // [{ backupFile, targetDb, importUser }]
   // BDs y usuarios reales de la instancia (Admin API). null = no cargados / no disponibles.
   const [dbs, setDbs] = useState(null);
@@ -29,15 +34,22 @@ export default function LaunchPage() {
   }, []);
 
   useEffect(() => {
-    setBuckets([]);
+    setBuckets(null);
     setBucketId('');
-    setFiles([]);
+    setFiles(null);
     setRows([]);
     setDbs(null);
     setOwners({ supported: false, users: [] });
     setLiveWarn(null);
     if (!instanceId) return;
-    api.get(`/instances/${instanceId}/buckets`).then(setBuckets).catch((e) => setError(e.message));
+    api.get(`/instances/${instanceId}/buckets`)
+      .then((list) => {
+        setBuckets(list);
+        // Preselecciona el bucket por defecto (o el único vinculado): lista sus backups solo.
+        const pick = list.find((b) => b.is_default) ?? (list.length === 1 ? list[0] : null);
+        if (pick) setBucketId(pick.id);
+      })
+      .catch((e) => { setBuckets([]); setError(e.message); });
     // Si falla (SA sin permisos, instancia inexistente...), se puede seguir escribiendo el nombre a mano.
     api.get(`/instances/${instanceId}/databases`).then(setDbs)
       .catch((e) => setLiveWarn(`No se pudieron listar las BDs de la instancia (${e.message}). Escribe el nombre de la BD destino.`));
@@ -45,28 +57,39 @@ export default function LaunchPage() {
       .catch((e) => setLiveWarn((w) => w ?? `No se pudieron listar los usuarios de la instancia (${e.message}).`));
   }, [instanceId]);
 
-  const selectedBucket = buckets.find((b) => b.id === bucketId);
+  const instance = instances.find((i) => i.id === instanceId);
+  const selectedBucket = (buckets ?? []).find((b) => b.id === bucketId);
   const bucketPath = selectedBucket ? bucketPathOf(selectedBucket) : '';
 
   const existsDb = (name) => !!dbs?.some((d) => d.name.toLowerCase() === name.trim().toLowerCase());
   const replaced = dbs ? rows.filter((r) => r.targetDb && existsDb(r.targetDb)) : [];
 
-  const loadFiles = async () => {
+  const loadFiles = async (isCurrent = () => true) => {
     setError(null);
     setLoadingFiles(true);
-    setFiles([]);
+    setFiles(null);
     setRows([]);
     try {
       const d = await api.get(
         `/backups?instanceId=${instanceId}&bucketPath=${encodeURIComponent(bucketPath)}`,
       );
-      setFiles(d.files);
+      if (isCurrent()) setFiles(d.files);
     } catch (e) {
-      setError(e.message);
+      if (isCurrent()) setError(e.message);
     } finally {
-      setLoadingFiles(false);
+      if (isCurrent()) setLoadingFiles(false);
     }
   };
+
+  // Al elegir (o preseleccionar) un bucket, lista sus backups sin pulsar nada.
+  useEffect(() => {
+    setFiles(null);
+    setRows([]);
+    if (!bucketPath) return;
+    let current = true;
+    loadFiles(() => current);
+    return () => { current = false; };
+  }, [instanceId, bucketPath]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = (fileName) =>
     setRows((prev) => {
@@ -125,27 +148,50 @@ export default function LaunchPage() {
           <select
             value={bucketId}
             onChange={(e) => setBucketId(e.target.value)}
-            disabled={!buckets.length}
+            disabled={!buckets?.length}
             required
           >
-            <option value="">{buckets.length ? '— elegir —' : '(sin buckets vinculados)'}</option>
-            {buckets.map((b) => (
+            <option value="">
+              {!instanceId ? '— elige antes la instancia —'
+                : buckets === null ? 'Cargando…'
+                  : buckets.length ? '— elegir —' : '(sin buckets vinculados)'}
+            </option>
+            {(buckets ?? []).map((b) => (
               <option key={b.id} value={b.id}>
-                {b.bucket_name}{b.is_default ? ' (default)' : ''}
+                {b.bucket_name}{b.base_prefix ? `/${b.base_prefix}` : ''}{b.is_default ? ' (default)' : ''}
               </option>
             ))}
           </select>
         </label>
 
-        {bucketPath && <div className="muted small mono">{bucketPath}</div>}
+        {instanceId && buckets?.length === 0 && (
+          <div className="alert warn small">
+            Esta instancia no tiene buckets vinculados.{' '}
+            {user?.role === 'admin' ? (
+              <>Vincúlalo en <Link to="/catalog">Catálogo</Link> → Instancias → <strong>Buckets</strong> (créalo antes en la pestaña Buckets si no existe) y márcalo como default.</>
+            ) : (
+              <>Pide a un administrador que vincule el bucket de backups a la instancia en el Catálogo.</>
+            )}
+          </div>
+        )}
 
-        <div>
-          <button type="button" className="btn" onClick={loadFiles} disabled={!bucketPath || loadingFiles}>
-            {loadingFiles ? 'Listando…' : 'Listar backups'}
-          </button>
-        </div>
+        {bucketPath && (
+          <div className="row gap">
+            <span className="muted small mono">{bucketPath}/</span>
+            <button type="button" className="btn ghost small" onClick={() => loadFiles()} disabled={loadingFiles}>
+              {loadingFiles ? 'Listando…' : '↻ Recargar'}
+            </button>
+          </div>
+        )}
 
-        {files.length > 0 && (
+        {files?.length === 0 && (
+          <div className="alert warn small">
+            No hay backups <span className="mono">{EXTENSIONS[instance?.engine] ?? ''}</span> directamente en{' '}
+            <span className="mono">{bucketPath}/</span> (no se listan subcarpetas). Revisa el prefijo del bucket en el Catálogo.
+          </div>
+        )}
+
+        {files?.length > 0 && (
           <div className="card">
             <div className="muted small">
               Selecciona backups y define la BD destino: elige una existente (se reemplaza) o escribe un nombre nuevo.
