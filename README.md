@@ -127,6 +127,8 @@ Abre **http://localhost:5173**.
 
 ### Producción (PM2)
 
+> Guía completa paso a paso del VPS (servidor, PostgreSQL, `.env`, PM2, firewall, actualización y problemas frecuentes): **[docs/DEPLOY.md](docs/DEPLOY.md)**.
+
 `ecosystem.config.cjs` define 3 procesos (`db-refresh-api`, `db-refresh-worker`, `db-refresh-scheduler`) con autorestart, tope de **2 GB por proceso** (`max_memory_restart: 2G`, heap V8 en 1792 MB para que el GC actúe antes) y logs en `logs/`.
 
 ```bash
