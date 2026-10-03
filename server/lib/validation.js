@@ -12,6 +12,13 @@ export function assertNonEmpty(value, label) {
   return value.trim();
 }
 
+/** String opcional: recortado, o null si viene vacío/ausente. */
+export function optionalString(value, label) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') throw new ValidationError(`${label} debe ser texto`);
+  return value.trim() || null;
+}
+
 /** Exige que el valor cumpla SAFE_NAME. */
 export function assertSafeName(value, label) {
   if (typeof value !== 'string' || !SAFE_NAME.test(value)) {

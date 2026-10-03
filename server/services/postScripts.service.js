@@ -6,6 +6,7 @@ import { mapPgError } from '../data/pgErrors.js';
 import { NotFoundError, ValidationError } from '../domain/errors.js';
 import { assertNonEmpty, assertSafeName } from '../lib/validation.js';
 import { splitSqlBatches } from '../lib/sqlBatches.js';
+import { missingSqlCredentials } from '../domain/instance.js';
 
 const MAX_SQL_CHARS = 100_000; // el body JSON ya está limitado a 256kb
 
@@ -29,6 +30,15 @@ function validate(input = {}) {
   };
 }
 
+// Un post-script activo se ejecuta con la conexión SQL de la instancia: exigirla.
+function assertInstanceCanRun(instance, data) {
+  if (!data.isActive || !missingSqlCredentials(instance).length) return;
+  throw new ValidationError(
+    'La instancia no tiene conexión SQL (host, usuario admin y secret ref): configúrala en ' +
+      'Catálogo → Instancias o guarda el post-script como inactivo',
+  );
+}
+
 export async function listForInstance(instanceId) {
   await getInstance(instanceId);
   return repo.listForInstance(instanceId);
@@ -47,8 +57,9 @@ async function getScript(instanceId, scriptId) {
 }
 
 export async function create(instanceId, input) {
-  await getInstance(instanceId);
+  const instance = await getInstance(instanceId);
   const data = validate(input);
+  assertInstanceCanRun(instance, data);
   try {
     return await repo.create(instanceId, data);
   } catch (err) {
@@ -59,6 +70,7 @@ export async function create(instanceId, input) {
 export async function update(instanceId, scriptId, input) {
   await getScript(instanceId, scriptId);
   const data = validate(input);
+  assertInstanceCanRun(await getInstance(instanceId), data);
   try {
     return await repo.update(scriptId, data);
   } catch (err) {

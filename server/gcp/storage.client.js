@@ -1,7 +1,7 @@
 // Cliente GCS: listar y validar backups. Reemplaza el uso de google.cloud.storage
 // de los scripts Python. Auth vía GOOGLE_APPLICATION_CREDENTIALS (ADC).
 import { Storage } from '@google-cloud/storage';
-import { InfraError } from '../domain/errors.js';
+import { DomainError, InfraError } from '../domain/errors.js';
 import { getSaCredentials } from '../services/settings.service.js';
 import { currentEpoch } from './state.js';
 
@@ -27,15 +27,50 @@ export function parseGsUri(gsUri) {
   return { bucket: m[1], prefix: m[2] ?? '' };
 }
 
+// Nombres de bucket de GCS: minúsculas, dígitos, '-', '_' y '.', 3-222 caracteres.
+const BUCKET_NAME_RE = /^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$/;
+
 /**
- * Lista los objetos bajo gs://bucket/prefix.
+ * Normaliza la ubicación de un bucket del catálogo (función pura). Acepta que se
+ * pegue la ruta completa en el nombre: 'gs://bucket/carpeta' -> bucket + prefijo.
+ * El prefijo se guarda sin barras al inicio/fin ('carpeta/sub') o null.
+ */
+export function normalizeBucketLocation(bucketName, basePrefix) {
+  let name = String(bucketName ?? '').trim().replace(/^gs:\/\//i, '');
+  let prefix = String(basePrefix ?? '').trim();
+  const slash = name.indexOf('/');
+  if (slash !== -1) {
+    const fromName = name.slice(slash + 1);
+    name = name.slice(0, slash);
+    prefix = [fromName, prefix].filter(Boolean).join('/');
+  }
+  if (!BUCKET_NAME_RE.test(name)) {
+    throw new DomainError(
+      `Nombre de bucket inválido: "${name}". Solo el nombre (p.ej. mi-bucket); la carpeta va en el prefijo`,
+      { code: 'BAD_BUCKET_NAME' },
+    );
+  }
+  prefix = prefix.replace(/\/{2,}/g, '/').replace(/^\/+|\/+$/g, '');
+  return { bucketName: name, basePrefix: prefix || null };
+}
+
+/** Prefijo como "carpeta": 'a/b' -> 'a/b/' ('' = raíz del bucket). */
+export function dirPrefix(prefix) {
+  const p = String(prefix ?? '').replace(/^\/+|\/+$/g, '');
+  return p ? `${p}/` : '';
+}
+
+/**
+ * Lista los backups que están DIRECTAMENTE en la carpeta gs://bucket/prefix
+ * (no en subcarpetas), como el script original (BUCKET_PATH/<archivo>).
  * @returns [{ name, fileName, sizeBytes, updated }]
  */
 export async function listBackups(gsUri) {
   const { bucket, prefix } = parseGsUri(gsUri);
   try {
     const storage = await getStorage();
-    const [files] = await storage.bucket(bucket).getFiles({ prefix });
+    // delimiter '/': solo el nivel de la carpeta; dirPrefix evita que 'datos' liste también 'datos-old/'.
+    const [files] = await storage.bucket(bucket).getFiles({ prefix: dirPrefix(prefix), delimiter: '/' });
     return files
       .filter((f) => !f.name.endsWith('/'))
       .map((f) => ({

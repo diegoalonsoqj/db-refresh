@@ -174,7 +174,7 @@ clave:   P4$$w0rD
 
 ## Flujo de uso
 
-1. **Catálogo** (admin): crea *Proyecto* → *Instancia* (motor, host, usuario admin, `secret_ref`) → *Bucket*, y **vincula** el bucket a la instancia. Opcional: **Post-scripts** de la instancia (SQL a ejecutar tras restaurar).
+1. **Catálogo** (admin): crea *Proyecto* → *Instancia* (nombre de la instancia de Cloud SQL y motor) → *Bucket* (nombre + carpeta, p.ej. bucket `homologacion-bd-data`, prefijo `homologaciones`; también acepta pegar `gs://homologacion-bd-data/homologaciones`), y **vincula** el bucket a la instancia (marcándolo por defecto). Se listan los backups que están directamente en esa carpeta. Opcional: **Post-scripts** de la instancia (SQL a ejecutar tras restaurar); solo ellos necesitan la **conexión SQL** de la instancia (host, usuario admin, `secret_ref`) — el restore va por el Cloud SQL Admin API y no la usa.
    - `secret_ref` es una **referencia** al password del usuario admin, nunca el password: `sm://projects/<p>/secrets/<s>[/versions/<v>]` (Secret Manager, leído con la SA de Ajustes, que necesita `Secret Manager Secret Accessor`) o `env:NOMBRE` (variable de entorno, para dev). Solo se usa para los post-scripts.
 2. **Lanzar restore** (operator/admin): elige instancia → bucket → *Listar backups* → mapea cada backup a su BD destino → **Restaurar**.
 3. **Progreso en vivo**: el detalle del job muestra el estado por BD y el **log en tiempo real (SSE)**.

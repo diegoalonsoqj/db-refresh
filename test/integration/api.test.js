@@ -189,6 +189,58 @@ test('post-scripts por instancia (admin): CRUD, validación, 409 y RBAC viewer 4
   }
 });
 
+test('instancias sin conexión SQL (solo restore) y buckets con ruta gs:// pegada', async (t) => {
+  if (!dbOk) return t.skip('BD no disponible');
+  const { cookie } = await login(ADMIN, PW);
+  const proj = await req('POST', '/projects', { cookie, body: { projectId: `${PROJ}-nc` } });
+  const ids = { inst: null, bucket: null };
+  try {
+    const projectRef = proj.data.id;
+    // Sin host/usuario/secret: válida (el import va por el Admin API).
+    const inst = await req('POST', '/instances', {
+      cookie, body: { projectRef, instanceName: 'itest-nocreds', engine: 'sqlserver' },
+    });
+    assert.equal(inst.status, 201);
+    ids.inst = inst.data.id;
+    assert.equal(inst.data.db_host, null);
+    assert.equal(inst.data.secret_ref, null);
+
+    // Conexión a medias o secret_ref mal formado: rechazados.
+    const partial = { projectRef, instanceName: 'itest-partial', engine: 'sqlserver', dbHost: '10.0.0.1' };
+    assert.equal((await req('POST', '/instances', { cookie, body: partial })).status, 422);
+    const badRef = { ...partial, adminUser: 'sqlserver', secretRef: 'P4ssw0rd' };
+    assert.equal((await req('POST', '/instances', { cookie, body: badRef })).status, 400);
+
+    // Post-script activo sin conexión SQL: 422; inactivo: permitido.
+    const ps = `/instances/${ids.inst}/post-scripts`;
+    const script = { name: 'job', sqlText: 'SELECT 1' };
+    assert.equal((await req('POST', ps, { cookie, body: script })).status, 422);
+    const inactive = await req('POST', ps, { cookie, body: { ...script, isActive: false } });
+    assert.equal(inactive.status, 201);
+
+    // Con conexión completa se puede activar; quitarla con scripts activos: 422.
+    const creds = { projectRef, instanceName: 'itest-nocreds', engine: 'sqlserver',
+      dbHost: '10.0.0.1', adminUser: 'sqlserver', secretRef: 'env:ITEST_NOPE' };
+    assert.equal((await req('PUT', `/instances/${ids.inst}`, { cookie, body: creds })).status, 200);
+    assert.equal((await req('PUT', `${ps}/${inactive.data.id}`, { cookie, body: script })).status, 200);
+    const strip = { projectRef, instanceName: 'itest-nocreds', engine: 'sqlserver' };
+    assert.equal((await req('PUT', `/instances/${ids.inst}`, { cookie, body: strip })).status, 422);
+
+    // Bucket: la ruta completa pegada en el nombre se separa en bucket + carpeta.
+    const b = await req('POST', '/buckets', {
+      cookie, body: { projectRef, bucketName: 'gs://itest-bucket/homologaciones/' },
+    });
+    assert.equal(b.status, 201);
+    ids.bucket = b.data.id;
+    assert.equal(b.data.bucket_name, 'itest-bucket');
+    assert.equal(b.data.base_prefix, 'homologaciones');
+  } finally {
+    if (ids.inst) await req('DELETE', `/instances/${ids.inst}`, { cookie });
+    if (ids.bucket) await req('DELETE', `/buckets/${ids.bucket}`, { cookie });
+    await req('DELETE', `/projects/${proj.data.id}`, { cookie });
+  }
+});
+
 test('usuarios AD: alta por admin (normaliza dominio), duplicado 409, validaciones y login', async (t) => {
   if (!dbOk) return t.skip('BD no disponible');
   const { cookie } = await login(ADMIN, PW);
