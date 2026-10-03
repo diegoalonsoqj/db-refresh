@@ -114,4 +114,12 @@ export const config = {
     // Timeout por lote (GO) de un post-script SQL.
     postScriptTimeoutMs: int('POST_SCRIPT_TIMEOUT_MS', 600_000),
   },
+
+  // Restore nativo de PostgreSQL (pg_restore/psql ejecutados en este servidor).
+  nativeRestore: {
+    // Carpeta de los binarios (vacío = los del PATH, p.ej. postgresql-client-17 en Ubuntu).
+    binDir: process.env.PG_BIN_DIR ?? '',
+    // Tiempo máximo de un pg_restore/psql (por BD/esquema).
+    timeoutSeconds: int('NATIVE_RESTORE_TIMEOUT_SECONDS', 10800),
+  },
 };

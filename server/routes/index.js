@@ -62,6 +62,8 @@ router.get('/audit', ...admin, usersCtl.audit);
 
 // Lecturas: cualquier usuario autenticado (viewer, operator, admin).
 router.get('/backups', authenticate, restore.listBackups);
+// Lee el índice de un dump tar (ejecuta pg_restore en el servidor): operator/admin.
+router.get('/backups/schemas', ...operator, restore.listDumpSchemas);
 router.get('/restores', authenticate, restore.listJobs);
 router.get('/restores/:id', authenticate, restore.getJob);
 router.get('/restores/:id/events', authenticate, restore.streamJob); // SSE

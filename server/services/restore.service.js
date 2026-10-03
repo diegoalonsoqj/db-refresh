@@ -5,10 +5,11 @@ import * as jobsRepo from '../data/repositories/jobs.repo.js';
 import { parseGsUri } from '../gcp/storage.client.js';
 import { NotFoundError, ValidationError } from '../domain/errors.js';
 import { validateMapping } from '../domain/restoreMapping.js';
+import { missingSqlCredentials } from '../domain/instance.js';
 
 /**
  * Crea (encola) un job de restauración.
- * @param {object} req { instanceId, bucketPath, mapping: [{backupFile, targetDb, importUser?}], requestedBy }
+ * @param {object} req { instanceId, bucketPath, method?, mapping: [{backupFile, targetDb, importUser?, scope?, schemaName?}], requestedBy }
  */
 export async function launchRestore(req) {
   const instance = await catalogRepo.getInstanceById(req.instanceId);
@@ -18,8 +19,16 @@ export async function launchRestore(req) {
   if (!req.bucketPath) throw new ValidationError('bucketPath es obligatorio');
   parseGsUri(req.bucketPath); // valida formato gs://
 
-  // Validación/sanitización: nombres de archivo/BD, BDs de sistema, owner (solo PG).
-  const items = validateMapping(instance.engine, req.mapping).map((m, idx) => ({ ...m, seq: idx + 1 }));
+  // Validación/sanitización: método, nombres de archivo/BD, BDs de sistema, owner (solo PG),
+  // alcance/esquema (solo nativo).
+  const method = req.method ?? 'import';
+  const items = validateMapping(instance.engine, req.mapping, method).map((m, idx) => ({ ...m, seq: idx + 1 }));
+  // El restore nativo se conecta por SQL a la IP privada: exige la conexión de la instancia.
+  if (method === 'native' && missingSqlCredentials(instance).length) {
+    throw new ValidationError(
+      'El restore nativo necesita la conexión SQL de la instancia (IP privada + credencial): configúrala en Catálogo → Instancias',
+    );
+  }
 
   const job = await jobsRepo.createJob(
     {
@@ -28,6 +37,7 @@ export async function launchRestore(req) {
       engine: instance.engine,
       requestedBy: req.requestedBy ?? null,
       bucketPath: req.bucketPath,
+      method,
     },
     items,
   );

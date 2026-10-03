@@ -64,6 +64,10 @@ export default function JobDetailPage() {
         </h2>
         <Link className="btn ghost" to="/jobs"><IconArrowLeft /> Historial</Link>
       </div>
+      <div className="muted small">
+        Método: {job.method === 'native' ? 'restore nativo (pg_restore / psql)' : 'import de Cloud SQL'}
+        {job.bucket_path && <> · origen <span className="mono">{job.bucket_path}</span></>}
+      </div>
       {job.error_message && <div className="alert error">{job.error_message}</div>}
 
       <h3>Bases de datos</h3>
@@ -76,7 +80,10 @@ export default function JobDetailPage() {
             <tr key={it.id}>
               <td>{it.seq}</td>
               <td className="mono small">{it.backup_file}</td>
-              <td className="mono">{it.target_db}</td>
+              <td className="mono">
+                {it.target_db}
+                {it.scope === 'schema' && <span className="muted small"> · esquema {it.schema_name}</span>}
+              </td>
               {hasOwner && <td className="mono small">{it.import_user ?? <span className="muted">por defecto</span>}</td>}
               <td><StatusBadge status={it.status} /></td>
             </tr>

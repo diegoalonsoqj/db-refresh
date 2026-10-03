@@ -266,6 +266,11 @@ test('restore: validación de owner/BD de sistema y RBAC de BDs/usuarios en vivo
     // Inválidos: no se encola nada.
     assert.equal((await launch([{ backupFile: 'a.bak', targetDb: 'ventas', importUser: 'sa' }])).status, 422);
     assert.equal((await launch([{ backupFile: 'a.bak', targetDb: 'master' }])).status, 422);
+    // Restore nativo: solo PostgreSQL (esta instancia es SQL Server).
+    const native = await req('POST', '/restores', {
+      cookie, body: { instanceId: instId, bucketPath: 'gs://itest-b/x', method: 'native', mapping: [{ backupFile: 'a.tar', targetDb: 'ventas' }] },
+    });
+    assert.equal(native.status, 422);
 
     const viewer = await login(VIEWER, PW);
     assert.equal((await req('GET', `/instances/${instId}/databases`, { cookie: viewer.cookie })).status, 403);

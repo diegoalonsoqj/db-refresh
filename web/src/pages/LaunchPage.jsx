@@ -4,8 +4,9 @@ import { api } from '../api/client.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { IconAlert, IconArrowUp, IconFolder, IconRefresh } from '../components/icons.jsx';
 
-// Extensiones que lista cada motor (deben coincidir con acceptedExtensions del adaptador).
-const EXTENSIONS = { sqlserver: '.bak', postgres: '.sql / .gz', mysql: '.sql / .gz' };
+// Extensiones que lista cada motor/método (deben coincidir con acceptedExtensions del adaptador).
+const EXTENSIONS = { sqlserver: '.bak', postgres: '.sql / .gz', mysql: '.sql / .gz', native: '.tar / .sql / .sql.gz' };
+const isTar = (fileName) => fileName.toLowerCase().endsWith('.tar');
 
 // gs://bucket/prefix a partir de la fila de bucket vinculado.
 function bucketPathOf(b) {
@@ -23,7 +24,10 @@ export default function LaunchPage() {
   const [files, setFiles] = useState(null); // null = aún no listados
   const [folders, setFolders] = useState([]);
   const [subPath, setSubPath] = useState([]); // subcarpetas navegadas dentro del bucket/prefijo
-  const [rows, setRows] = useState([]); // [{ backupFile, targetDb, importUser }]
+  const [rows, setRows] = useState([]); // [{ backupFile, targetDb, isNew, importUser, scope, schemaName }]
+  // Método: 'import' (Cloud SQL Admin API) | 'native' (pg_restore/psql, solo PostgreSQL).
+  const [method, setMethod] = useState('import');
+  const [dumpSchemas, setDumpSchemas] = useState({}); // archivo -> esquemas leídos del dump tar (o { error })
   // BDs y usuarios reales de la instancia (Admin API). null = no cargados / no disponibles.
   const [dbs, setDbs] = useState(null);
   const [owners, setOwners] = useState({ supported: false, users: [] });
@@ -44,6 +48,7 @@ export default function LaunchPage() {
     setDbs(null);
     setOwners({ supported: false, users: [] });
     setLiveWarn(null);
+    setMethod('import');
     if (!instanceId) return;
     api.get(`/instances/${instanceId}/buckets`)
       .then((list) => {
@@ -61,6 +66,8 @@ export default function LaunchPage() {
   }, [instanceId]);
 
   const instance = instances.find((i) => i.id === instanceId);
+  const native = method === 'native';
+  const nativeReady = Boolean(instance?.db_host && instance?.credential_ref);
   const selectedBucket = (buckets ?? []).find((b) => b.id === bucketId);
   const basePath = selectedBucket ? bucketPathOf(selectedBucket) : '';
   // Carpeta actual (base del bucket + subcarpetas): es la ruta que se lista y la que usa el job.
@@ -68,7 +75,9 @@ export default function LaunchPage() {
 
   const findDb = (name) => dbs?.find((d) => d.name.toLowerCase() === name.trim().toLowerCase());
   const existsDb = (name) => !!findDb(name);
-  const replaced = dbs ? rows.filter((r) => r.targetDb && existsDb(r.targetDb)) : [];
+  // Solo el alcance 'BD completa' elimina la BD; por esquema solo se reemplaza ese esquema.
+  const replaced = dbs ? rows.filter((r) => r.scope !== 'schema' && r.targetDb && existsDb(r.targetDb)) : [];
+  const replacedSchemas = rows.filter((r) => r.scope === 'schema' && r.schemaName);
 
   const loadFiles = async (isCurrent = () => true) => {
     setError(null);
@@ -78,7 +87,7 @@ export default function LaunchPage() {
     setRows([]);
     try {
       const d = await api.get(
-        `/backups?instanceId=${instanceId}&bucketPath=${encodeURIComponent(bucketPath)}`,
+        `/backups?instanceId=${instanceId}&bucketPath=${encodeURIComponent(bucketPath)}&method=${method}`,
       );
       if (isCurrent()) { setFiles(d.files); setFolders(d.folders ?? []); }
     } catch (e) {
@@ -91,16 +100,17 @@ export default function LaunchPage() {
   // Cambiar de bucket vuelve a su carpeta base.
   useEffect(() => { setSubPath([]); }, [instanceId, bucketId]);
 
-  // Al elegir un bucket o entrar en una carpeta, lista su contenido sin pulsar nada.
+  // Al elegir un bucket, entrar en una carpeta o cambiar de método, lista su contenido sin pulsar nada.
   useEffect(() => {
     setFiles(null);
     setFolders([]);
     setRows([]);
+    setDumpSchemas({});
     if (!bucketPath) return;
     let current = true;
     loadFiles(() => current);
     return () => { current = false; };
-  }, [instanceId, bucketPath]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [instanceId, bucketPath, method]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = (fileName) =>
     setRows((prev) => {
@@ -108,9 +118,12 @@ export default function LaunchPage() {
         return prev.filter((r) => r.backupFile !== fileName);
       }
       // Sugerencia: el nombre del archivo; si coincide con una BD existente, se preselecciona esa.
-      const suggested = fileName.replace(/\.(bak|sql|gz)$/gi, '');
+      const suggested = fileName.replace(/\.(bak|sql|gz|tar)$/gi, '');
       const match = findDb(suggested);
-      return [...prev, { backupFile: fileName, targetDb: match?.name ?? suggested, isNew: !match, importUser: '' }];
+      return [...prev, {
+        backupFile: fileName, targetDb: match?.name ?? suggested, isNew: !match, importUser: '',
+        scope: 'database', schemaName: '',
+      }];
     });
 
   const setRow = (fileName, key, val) =>
@@ -125,6 +138,28 @@ export default function LaunchPage() {
       return { ...r, isNew: false, targetDb: value };
     }));
 
+  // Alcance por esquema: la BD destino debe existir (se elige de la lista, no se crea).
+  const setScope = (fileName, scope) =>
+    setRows((prev) => prev.map((r) => {
+      if (r.backupFile !== fileName) return r;
+      if (scope === 'schema' && r.isNew) return { ...r, scope, isNew: false, targetDb: dbs?.[0]?.name ?? '' };
+      return { ...r, scope };
+    }));
+
+  // Lee los esquemas del índice de un dump tar (pg_restore --list en el servidor).
+  const readSchemas = async (fileName) => {
+    setDumpSchemas((m) => ({ ...m, [fileName]: { loading: true } }));
+    try {
+      const d = await api.get(
+        `/backups/schemas?instanceId=${instanceId}&bucketPath=${encodeURIComponent(bucketPath)}&file=${encodeURIComponent(fileName)}`,
+      );
+      setDumpSchemas((m) => ({ ...m, [fileName]: { list: d.schemas } }));
+      if (d.schemas.length === 1) setRow(fileName, 'schemaName', d.schemas[0]);
+    } catch (err) {
+      setDumpSchemas((m) => ({ ...m, [fileName]: { error: err.message } }));
+    }
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     setError(null);
@@ -134,8 +169,9 @@ export default function LaunchPage() {
         backupFile: r.backupFile,
         targetDb: r.targetDb.trim(),
         ...(r.importUser ? { importUser: r.importUser } : {}),
+        ...(native && r.scope === 'schema' ? { scope: 'schema', schemaName: r.schemaName.trim() } : {}),
       }));
-      const d = await api.post('/restores', { instanceId, bucketId, bucketPath, mapping });
+      const d = await api.post('/restores', { instanceId, bucketId, bucketPath, method, mapping });
       navigate(`/jobs/${d.jobId}`);
     } catch (err) {
       setError(err.message);
@@ -165,6 +201,28 @@ export default function LaunchPage() {
           </select>
         </label>
         {liveWarn && <div className="alert warn small">{liveWarn}</div>}
+
+        {instance?.engine === 'postgres' && (
+          <label>
+            Método
+            <select value={method} onChange={(e) => setMethod(e.target.value)}>
+              <option value="import">Import de Cloud SQL (dump SQL .sql / .gz)</option>
+              <option value="native">Restore nativo con pg_restore / psql (.tar, .sql, .sql.gz)</option>
+            </select>
+          </label>
+        )}
+        {native && (
+          <div className={`alert small ${nativeReady ? 'warn' : 'error'}`}>
+            {nativeReady ? (
+              <>El restore nativo se ejecuta desde el servidor de la app contra la IP privada de la instancia
+              ({instance.db_host}) con la credencial {instance.credential_name}. Permite restaurar la BD completa o
+              solo un esquema (DROP SCHEMA … CASCADE y restore de ese esquema).</>
+            ) : (
+              <>La instancia no tiene conexión SQL (IP privada + credencial): configúrala en Catálogo → Instancias
+              para usar el restore nativo.</>
+            )}
+          </div>
+        )}
 
         <label>
           Bucket
@@ -235,7 +293,7 @@ export default function LaunchPage() {
 
         {files?.length === 0 && (
           <div className="alert warn small">
-            No hay backups <span className="mono">{EXTENSIONS[instance?.engine] ?? ''}</span> en{' '}
+            No hay backups <span className="mono">{EXTENSIONS[native ? 'native' : instance?.engine] ?? ''}</span> en{' '}
             <span className="mono">{bucketPath}/</span>.
             {folders.length > 0 ? ' Entra en una de las carpetas.' : ' Revisa el prefijo del bucket en el Catálogo.'}
           </div>
@@ -246,12 +304,16 @@ export default function LaunchPage() {
             <div className="muted small">
               Selecciona backups y elige la BD destino: una existente de la instancia (se elimina y se reemplaza) o
               «Nueva BD» para escribir el nombre.
-              {owners.supported && ' El owner (PostgreSQL) es el usuario con el que se importa: los objetos quedan a su nombre.'}
+              {native && ' Con alcance «Esquema» solo se reemplaza ese esquema dentro de una BD existente.'}
+              {owners.supported && ' El owner es el rol con el que se restaura: los objetos quedan a su nombre.'}
             </div>
+            <div className="table-scroll">
             <table className="table">
               <thead>
                 <tr>
-                  <th /><th>Archivo</th><th>Tamaño</th><th>BD destino</th>
+                  <th /><th>Archivo</th><th>Tamaño</th>
+                  {native && <th>Alcance</th>}
+                  <th>BD destino</th>
                   {owners.supported && <th>Owner</th>}
                 </tr>
               </thead>
@@ -263,12 +325,33 @@ export default function LaunchPage() {
                       <td><input type="checkbox" checked={!!r} onChange={() => toggle(f.fileName)} /></td>
                       <td className="mono small">{f.fileName}</td>
                       <td className="muted small">{(f.sizeBytes / 1e6).toFixed(1)} MB</td>
+                      {native && (
+                        <td>
+                          {r && (
+                            <div className="stack-tight">
+                              <select value={r.scope} onChange={(e) => setScope(f.fileName, e.target.value)}>
+                                <option value="database">BD completa</option>
+                                <option value="schema" disabled={!dbs?.length}>Solo un esquema</option>
+                              </select>
+                              {r.scope === 'schema' && (
+                                <SchemaPicker
+                                  fileName={f.fileName}
+                                  value={r.schemaName}
+                                  onChange={(v) => setRow(f.fileName, 'schemaName', v)}
+                                  state={dumpSchemas[f.fileName]}
+                                  onRead={() => readSchemas(f.fileName)}
+                                />
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      )}
                       <td>
                         {r && (
                           <div className="row gap">
                             {dbs && (
                               <select value={r.isNew ? NEW_DB : r.targetDb} onChange={(e) => chooseDb(f.fileName, e.target.value)}>
-                                <option value={NEW_DB}>Nueva BD…</option>
+                                {r.scope !== 'schema' && <option value={NEW_DB}>Nueva BD…</option>}
                                 {dbs.length > 0 && (
                                   <optgroup label={`BDs de la instancia (${dbs.length})`}>
                                     {dbs.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
@@ -285,9 +368,12 @@ export default function LaunchPage() {
                                 required
                               />
                             )}
-                            {dbs && r.targetDb.trim() && (existsDb(r.targetDb)
+                            {dbs && r.targetDb.trim() && r.scope !== 'schema' && (existsDb(r.targetDb)
                               ? <span className="pill warn" title="La BD existe: se eliminará y se restaurará">existe · se reemplaza</span>
                               : <span className="pill on">nueva</span>)}
+                            {r.scope === 'schema' && r.schemaName && (
+                              <span className="pill warn" title="Se elimina el esquema (CASCADE) y se restaura">esquema se reemplaza</span>
+                            )}
                           </div>
                         )}
                       </td>
@@ -295,7 +381,7 @@ export default function LaunchPage() {
                         <td>
                           {r && (
                             <select value={r.importUser} onChange={(e) => setRow(f.fileName, 'importUser', e.target.value)}>
-                              <option value="">(por defecto de Cloud SQL)</option>
+                              <option value="">{native ? '(usuario de la credencial)' : '(por defecto de Cloud SQL)'}</option>
                               {owners.users.map((u) => (
                                 <option key={u.name} value={u.name}>
                                   {u.name}{u.type !== 'BUILT_IN' ? ` (${u.type})` : ''}
@@ -310,6 +396,7 @@ export default function LaunchPage() {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
@@ -319,11 +406,41 @@ export default function LaunchPage() {
             <span className="mono">{replaced.map((r) => r.targetDb.trim()).join(', ')}</span>
           </div>
         )}
+        {replacedSchemas.length > 0 && (
+          <div className="alert warn">
+            Se eliminarán (CASCADE) y restaurarán {replacedSchemas.length} esquema(s):{' '}
+            <span className="mono">{replacedSchemas.map((r) => `${r.targetDb.trim()}.${r.schemaName.trim()}`).join(', ')}</span>
+          </div>
+        )}
 
-        <button className="btn primary" disabled={busy || rows.length === 0}>
-          {busy ? 'Encolando…' : `Restaurar ${rows.length} BD`}
+        <button className="btn primary" disabled={busy || rows.length === 0 || (native && !nativeReady)}>
+          {busy ? 'Encolando…' : `Restaurar ${rows.length} ${rows.length === 1 ? 'destino' : 'destinos'}`}
         </button>
       </form>
+    </div>
+  );
+}
+
+// Esquema a restaurar: de la lista leída del dump tar (pg_restore --list) o escrito a
+// mano (dumps planos, que no tienen índice: deben ser de ese esquema, pg_dump -n).
+function SchemaPicker({ fileName, value, onChange, state, onRead }) {
+  if (state?.list?.length) {
+    return (
+      <select value={value} onChange={(e) => onChange(e.target.value)} required>
+        <option value="">— esquema —</option>
+        {state.list.map((sc) => <option key={sc} value={sc}>{sc}</option>)}
+      </select>
+    );
+  }
+  return (
+    <div className="stack-tight">
+      <input className="mono" placeholder="nombre del esquema" value={value} onChange={(e) => onChange(e.target.value)} required />
+      {isTar(fileName) && (
+        <button type="button" className="btn ghost small" onClick={onRead} disabled={state?.loading}>
+          {state?.loading ? 'Leyendo el dump…' : 'Leer esquemas del dump'}
+        </button>
+      )}
+      {state?.error && <span className="small" style={{ color: 'var(--err)' }}>{state.error}</span>}
     </div>
   );
 }

@@ -7,7 +7,7 @@
 // dump NO contiene su propio CREATE DATABASE/USE (dump de un único esquema); en
 // ese caso el `database` del importContext dirige el import a la BD recién creada.
 import { EngineAdapter } from '../EngineAdapter.js';
-import { DomainError, InfraError } from '../../domain/errors.js';
+import { DomainError } from '../../domain/errors.js';
 import * as storage from '../../gcp/storage.client.js';
 import * as csql from '../../gcp/cloudsql.client.js';
 import { config } from '../../config/index.js';
@@ -44,23 +44,7 @@ export class SqlDumpAdapter extends EngineAdapter {
   // Flujo destructivo: eliminar la BD y recrearla vacía para recibir el import.
   async prepareTarget(targetDb) {
     await this.dropIfExists(targetDb);
-    await this._createEmptyDatabase(targetDb);
-  }
-
-  async _createEmptyDatabase(targetDb) {
-    await this.ctx.log('info', `Creando la BD vacía ${targetDb}.`);
-    const op = await csql.createDatabase({
-      project: this.ctx.project,
-      instance: this.ctx.instance.instance_name,
-      database: targetDb,
-    });
-    const res = await this._wait(op);
-    if (!res.ok) {
-      throw new InfraError(`No se pudo crear la BD ${targetDb}`, {
-        code: 'CREATE_DB_FAILED',
-        cause: res.error,
-      });
-    }
+    await this.createEmptyDatabase(targetDb);
   }
 
   async restore(item) {

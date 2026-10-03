@@ -4,18 +4,18 @@ import { query, withTransaction } from '../pool.js';
 
 /**
  * Crea un job y sus items en una sola transacción.
- * @param {object} job  { instanceId, bucketId, engine, requestedBy, bucketPath }
- * @param {Array}  items [{ backupFile, targetDb, seq, sizeBytes, importUser }]
+ * @param {object} job  { instanceId, bucketId, engine, requestedBy, bucketPath, method }
+ * @param {Array}  items [{ backupFile, targetDb, seq, sizeBytes, importUser, scope, schemaName }]
  * @returns job creado con sus items
  */
 export async function createJob(job, items) {
   return withTransaction(async (client) => {
     const { rows } = await client.query(
       `INSERT INTO restore_jobs
-         (instance_ref, bucket_ref, engine, requested_by, bucket_path, status)
-       VALUES ($1, $2, $3, $4, $5, 'pending')
+         (instance_ref, bucket_ref, engine, requested_by, bucket_path, method, status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'pending')
        RETURNING *`,
-      [job.instanceId, job.bucketId ?? null, job.engine, job.requestedBy ?? null, job.bucketPath],
+      [job.instanceId, job.bucketId ?? null, job.engine, job.requestedBy ?? null, job.bucketPath, job.method ?? 'import'],
     );
     const created = rows[0];
 
@@ -23,10 +23,11 @@ export async function createJob(job, items) {
     for (const it of items) {
       const r = await client.query(
         `INSERT INTO restore_job_items
-           (job_ref, backup_file, target_db, seq, size_bytes, import_user, status)
-         VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+           (job_ref, backup_file, target_db, seq, size_bytes, import_user, scope, schema_name, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
          RETURNING *`,
-        [created.id, it.backupFile, it.targetDb, it.seq, it.sizeBytes ?? null, it.importUser ?? null],
+        [created.id, it.backupFile, it.targetDb, it.seq, it.sizeBytes ?? null, it.importUser ?? null,
+          it.scope ?? 'database', it.schemaName ?? null],
       );
       insertedItems.push(r.rows[0]);
     }

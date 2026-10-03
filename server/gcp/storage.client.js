@@ -106,6 +106,13 @@ export async function listBackups(gsUri) {
   return (await listFolder(gsUri)).files;
 }
 
+/** Stream de lectura de un objeto de GCS (restore nativo: se canaliza a pg_restore/psql sin tocar disco). */
+export async function openReadStream(gsUri) {
+  const { bucket, prefix } = parseGsUri(gsUri);
+  const storage = await getStorage();
+  return storage.bucket(bucket).file(prefix).createReadStream({ validation: false });
+}
+
 /**
  * Verifica que un archivo exista bajo el prefijo y devuelve su metadata.
  * @returns { fileName, gsUri, sizeBytes, updated } | null
