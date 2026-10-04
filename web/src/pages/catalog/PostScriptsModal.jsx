@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import Modal from '../../components/Modal.jsx';
+import { IconLaunch } from '../../components/icons.jsx';
+
+const LEVEL_LABEL = { info: 'INFO', warning: 'WARN', error: 'ERROR' };
 
 // Post-scripts SQL de una instancia: se ejecutan en orden tras un job en el que
 // TODAS las restauraciones salieron OK (equivale a scripts_extras del script original).
@@ -24,6 +27,8 @@ export default function PostScriptsModal({ instance, onClose }) {
   const [form, setForm] = useState(empty);
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Ejecución manual: { name, pending } mientras corre; luego { name, ok, lines, error, durationMs }.
+  const [run, setRun] = useState(null);
 
   const base = `/instances/${instance.id}/post-scripts`;
   const load = () => api.get(base).then(setScripts).catch((e) => setErr(e.message));
@@ -50,6 +55,24 @@ export default function PostScriptsModal({ instance, onClose }) {
     } catch (e2) { setErr(e2.message); }
     finally { setBusy(false); }
   };
+
+  // Ejecuta YA la versión guardada del script en la instancia (aunque esté inactivo).
+  const runScript = async (s) => {
+    if (!confirm(`¿Ejecutar ahora "${s.name}" en la instancia ${instance.instance_name}?\n\nSe ejecuta la versión guardada del script, con la credencial de la instancia.`)) return;
+    setRun({ name: s.name, pending: true });
+    try {
+      setRun({ name: s.name, ...(await api.post(`${base}/${s.id}/run`, {})) });
+    } catch (e) {
+      setRun({ name: s.name, ok: false, error: e.message, lines: [{ level: 'error', message: e.message }] });
+    }
+  };
+
+  // En edición, solo se puede ejecutar si no hay cambios sin guardar.
+  const dirty = editing?.id && (
+    form.name !== editing.name || (form.databaseName || null) !== (editing.database_name ?? null)
+    || form.sqlText !== editing.sql_text || Number(form.sortOrder) !== editing.sort_order
+    || form.isActive !== editing.is_active
+  );
 
   const remove = async (s) => {
     if (!confirm(`¿Eliminar el post-script "${s.name}"?`)) return;
@@ -93,7 +116,15 @@ export default function PostScriptsModal({ instance, onClose }) {
           <div className="row gap">
             <button className="btn primary" disabled={busy}>Guardar</button>
             <button type="button" className="btn" onClick={() => setEditing(null)}>Cancelar</button>
+            {editing.id && (
+              <button type="button" className="btn" onClick={() => runScript(editing)}
+                disabled={noConnection || dirty || run?.pending}
+                title={dirty ? 'Guarda los cambios para ejecutar esta versión' : noConnection ? 'La instancia no tiene conexión SQL' : undefined}>
+                <IconLaunch /> Ejecutar
+              </button>
+            )}
           </div>
+          {dirty && <div className="muted small">Hay cambios sin guardar: se ejecuta la versión guardada, guarda antes para probar la nueva.</div>}
         </form>
       ) : !scripts ? <div className="muted">Cargando…</div> : (
         <>
@@ -112,6 +143,8 @@ export default function PostScriptsModal({ instance, onClose }) {
                   <td className="mono small">{s.database_name ?? <span className="muted">master</span>}</td>
                   <td><span className={`pill ${s.is_active ? 'on' : ''}`}>{s.is_active ? 'sí' : 'no'}</span></td>
                   <td className="actions">
+                    <button className="btn ghost small" disabled={busy || noConnection || run?.pending} onClick={() => runScript(s)}
+                      title={noConnection ? 'La instancia no tiene conexión SQL' : 'Ejecutar ahora en la instancia'}>Ejecutar</button>
                     <button className="btn ghost small" disabled={busy} onClick={() => openEdit(s)}>Editar</button>
                     <button className="btn ghost small" disabled={busy} onClick={() => remove(s)}>Eliminar</button>
                   </td>
@@ -123,6 +156,28 @@ export default function PostScriptsModal({ instance, onClose }) {
             <button className="btn primary small" onClick={openNew}>+ Nuevo post-script</button>
           </div>
         </>
+      )}
+
+      {run && (
+        <div className="run-output">
+          <div className="row between">
+            <strong className="small">
+              Ejecución de «{run.name}»:{' '}
+              {run.pending ? <span className="muted">en curso…</span>
+                : run.ok ? <span className="pill on">correcta</span> : <span className="pill warn">con error</span>}
+              {run.durationMs != null && <span className="muted"> · {(run.durationMs / 1000).toFixed(1)} s</span>}
+            </strong>
+            {!run.pending && <button type="button" className="btn ghost small" onClick={() => setRun(null)}>Cerrar</button>}
+          </div>
+          <div className="log run-log">
+            {run.pending ? <div className="muted">Ejecutando en {instance.instance_name}…</div> : (run.lines ?? []).map((l, i) => (
+              <div key={i} className={`logline ${l.level}`}>
+                <span className={`log-level ${l.level}`}>{LEVEL_LABEL[l.level] ?? l.level}</span>
+                <span className="log-msg">{l.message}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </Modal>
   );

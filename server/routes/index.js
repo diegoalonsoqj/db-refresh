@@ -114,6 +114,8 @@ router.get('/instances/:id/post-scripts', ...admin, postScripts.list);
 router.post('/instances/:id/post-scripts', ...admin, postScripts.create);
 router.put('/instances/:id/post-scripts/:scriptId', ...admin, postScripts.update);
 router.delete('/instances/:id/post-scripts/:scriptId', ...admin, postScripts.remove);
+// Ejecuta ya un post-script guardado (SQL arbitrario en la instancia): solo admin, queda en auditoría.
+router.post('/instances/:id/post-scripts/:scriptId/run', ...admin, postScripts.run);
 
 router.get('/buckets', authenticate, catalog.listBuckets);
 router.post('/buckets', ...admin, catalog.createBucket);
