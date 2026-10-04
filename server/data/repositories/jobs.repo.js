@@ -39,29 +39,76 @@ export async function createJob(job, items) {
 
 /**
  * Toma el siguiente job pendiente y lo marca 'running' de forma atómica.
- * SKIP LOCKED permite varios workers sin colisionar. Devuelve null si no hay.
+ * Jobs de instancias distintas corren en paralelo; los de una misma instancia,
+ * en orden (Cloud SQL admite una operación a la vez por instancia): se salta un
+ * job si su instancia ya tiene otro en curso.
+ *  - SKIP LOCKED: varios claims a la vez no toman el mismo job.
+ *  - Bloqueo consultivo por instancia (hasta el COMMIT) + re-chequeo: dos claims
+ *    simultáneos no pueden poner en curso dos jobs de la misma instancia.
+ * Devuelve null si no hay nada que tomar.
  */
 export async function claimNextJob(workerId) {
   return withTransaction(async (client) => {
-    const { rows } = await client.query(
-      `SELECT id FROM restore_jobs
-        WHERE status = 'pending'
-        ORDER BY created_at
+    const { rows: candidates } = await client.query(
+      `SELECT j.id, j.instance_ref
+         FROM restore_jobs j
+        WHERE j.status = 'pending'
+          AND NOT EXISTS (SELECT 1 FROM restore_jobs r
+                           WHERE r.instance_ref = j.instance_ref AND r.status = 'running')
+        ORDER BY j.created_at
         FOR UPDATE SKIP LOCKED
-        LIMIT 1`,
+        LIMIT 20`,
     );
-    if (rows.length === 0) return null;
+    for (const cand of candidates) {
+      const { rows: [lock] } = await client.query(
+        `SELECT pg_try_advisory_xact_lock(hashtextextended($1::text, 0)) AS ok`,
+        [cand.instance_ref],
+      );
+      if (!lock.ok) continue; // otro claim está tomando un job de esta instancia
+      // Sentencia nueva => ve lo confirmado por otros claims mientras tanto.
+      const { rows: busy } = await client.query(
+        `SELECT 1 FROM restore_jobs WHERE instance_ref = $1 AND status = 'running' LIMIT 1`,
+        [cand.instance_ref],
+      );
+      if (busy.length) continue;
+      const { rows: updated } = await client.query(
+        `UPDATE restore_jobs
+            SET status = 'running', started_at = now(),
+                locked_at = now(), locked_by = $2
+          WHERE id = $1
+          RETURNING *`,
+        [cand.id, workerId],
+      );
+      return updated[0];
+    }
+    return null;
+  });
+}
 
-    const jobId = rows[0].id;
-    const { rows: updated } = await client.query(
+/**
+ * Al arrancar el worker: los jobs que quedaron 'running' de una ejecución
+ * anterior (el proceso murió o se reinició a mitad) se marcan fallidos, para
+ * que no bloqueen su instancia. Supone un único proceso worker (PM2, instances: 1),
+ * que es quien los ejecutaba. Devuelve los jobs afectados.
+ */
+export async function failInterruptedJobs(message) {
+  return withTransaction(async (client) => {
+    const { rows } = await client.query(
       `UPDATE restore_jobs
-          SET status = 'running', started_at = now(),
-              locked_at = now(), locked_by = $2
-        WHERE id = $1
-        RETURNING *`,
-      [jobId, workerId],
+          SET status = 'failed', error_message = $1, finished_at = now(), locked_at = NULL, locked_by = NULL
+        WHERE status = 'running'
+        RETURNING id`,
+      [message],
     );
-    return updated[0];
+    if (rows.length) {
+      await client.query(
+        `UPDATE restore_job_items
+            SET status = 'failed', error_message = COALESCE(error_message, $2), finished_at = COALESCE(finished_at, now())
+          WHERE job_ref = ANY($1) AND status NOT IN ('succeeded', 'failed')`,
+        [rows.map((r) => r.id), message],
+      );
+    }
+    return rows;
   });
 }
 
