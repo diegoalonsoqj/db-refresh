@@ -27,6 +27,8 @@ export default function LaunchPage() {
   const [rows, setRows] = useState([]); // [{ backupFile, targetDb, isNew, importUser, scope, schemaName }]
   // Método: 'import' (Cloud SQL Admin API) | 'native' (pg_restore/psql, solo PostgreSQL).
   const [method, setMethod] = useState('import');
+  // Restaurar aunque falle la conexión SQL (se omiten post-scripts y corrección de huérfanos).
+  const [skipSql, setSkipSql] = useState(false);
   const [dumpSchemas, setDumpSchemas] = useState({}); // archivo -> esquemas leídos del dump tar (o { error })
   // BDs y usuarios reales de la instancia (Admin API). null = no cargados / no disponibles.
   const [dbs, setDbs] = useState(null);
@@ -54,6 +56,7 @@ export default function LaunchPage() {
     setInstStatus(null);
     setLogins({ supported: false, logins: [] });
     setMethod('import');
+    setSkipSql(false);
     if (!instanceId) return;
     api.get(`/instances/${instanceId}/logins`).then(setLogins)
       .catch((e) => setLogins({ supported: true, logins: [], reason: e.message }));
@@ -186,7 +189,9 @@ export default function LaunchPage() {
         ...(native && r.scope === 'schema' ? { scope: 'schema', schemaName: r.schemaName.trim() } : {}),
         ...(orphansOn && r.fixOrphans ? { fixOrphans: true, ...(r.dbOwner ? { dbOwner: r.dbOwner } : {}) } : {}),
       }));
-      const d = await api.post('/restores', { instanceId, bucketId, bucketPath, method, mapping });
+      const d = await api.post('/restores', {
+        instanceId, bucketId, bucketPath, method, mapping, ...(!native && skipSql ? { skipSqlOnFailure: true } : {}),
+      });
       navigate(`/jobs/${d.jobId}`);
     } catch (err) {
       setError(err.message);
@@ -470,6 +475,13 @@ export default function LaunchPage() {
             Se eliminarán (CASCADE) y restaurarán {replacedSchemas.length} esquema(s):{' '}
             <span className="mono">{replacedSchemas.map((r) => `${r.targetDb.trim()}.${r.schemaName.trim()}`).join(', ')}</span>
           </div>
+        )}
+
+        {!native && rows.length > 0 && (
+          <label className="checkline small" title="Si la app no llega por SQL a la instancia, restaura igualmente y omite esos pasos (el job queda «OK con avisos»)">
+            <input type="checkbox" checked={skipSql} onChange={(e) => setSkipSql(e.target.checked)} />
+            Continuar aunque falle la conexión SQL (se omiten los post-scripts y la corrección de usuarios huérfanos)
+          </label>
         )}
 
         <button className="btn primary" disabled={busy || rows.length === 0 || (native && !nativeReady) || instStatus?.running === false}>

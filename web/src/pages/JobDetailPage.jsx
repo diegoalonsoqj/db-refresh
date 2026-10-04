@@ -60,7 +60,7 @@ export default function JobDetailPage() {
     <div>
       <div className="row between">
         <h2>
-          Job <span className="mono">{job.id.slice(0, 8)}</span> <StatusBadge status={job.status} />
+          Job <span className="mono">{job.id.slice(0, 8)}</span> <StatusBadge status={job.status} warning={job.warning_message} />
         </h2>
         <Link className="btn ghost" to="/jobs"><IconArrowLeft /> Historial</Link>
       </div>
@@ -69,6 +69,7 @@ export default function JobDetailPage() {
         {job.bucket_path && <> · origen <span className="mono">{job.bucket_path}</span></>}
       </div>
       {job.error_message && <div className="alert error">{job.error_message}</div>}
+      {job.warning_message && <div className="alert warn">{job.warning_message}</div>}
 
       <h3>Bases de datos</h3>
       <table className="table">
