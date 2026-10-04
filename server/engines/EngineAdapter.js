@@ -4,6 +4,7 @@ import { DomainError, InfraError } from '../domain/errors.js';
 import * as csql from '../gcp/cloudsql.client.js';
 import { config } from '../config/index.js';
 import { splitSqlBatches } from '../lib/sqlBatches.js';
+import { formatResultSet } from '../lib/resultSets.js';
 import { sqlRunnerFor } from './sql/runners.js';
 import { resolveSqlConnection } from './sql/connection.js';
 
@@ -184,7 +185,7 @@ export class EngineAdapter {
    * Ejecuta los post-scripts activos en orden (equivale a run_extra_scripts del
    * script original). Cada script abre su conexión (en su database_name) y corre
    * sus lotes en secuencia (`GO` separa lotes; en PG/MySQL suele haber uno solo);
-   * los PRINT / RAISE NOTICE van al log del job. El primer fallo detiene el resto:
+   * los PRINT / RAISE NOTICE y las tablas de los SELECT (reportes) van al log del job. El primer fallo detiene el resto:
    * un script posterior puede depender del anterior y el job queda en failed.
    */
   async runPostScripts() {
@@ -199,7 +200,11 @@ export class EngineAdapter {
         await runner.withConnection(conn, script.database_name, async (handle) => {
           for (const [i, batch] of batches.entries()) {
             try {
-              await runner.runBatch(handle, batch, { onInfo: (msg) => this.ctx.log('info', `  ${msg}`) });
+              const sets = await runner.runBatch(handle, batch, { onInfo: (msg) => this.ctx.log('info', `  ${msg}`) });
+              // Tablas de reporte del script (SELECT): al log, con las filas de error como aviso.
+              for (const set of sets ?? []) {
+                for (const [level, text] of formatResultSet(set.rows, set.columns)) await this.ctx.log(level, `  ${text}`);
+              }
             } catch (err) {
               throw new InfraError(`lote ${i + 1}/${batches.length}: ${err.message}`, {
                 code: 'POST_SCRIPT_FAILED',

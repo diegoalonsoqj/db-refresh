@@ -57,13 +57,20 @@ export async function withConnection(conn, database, fn) {
   }
 }
 
-/** Ejecuta el SQL (admite varias sentencias). `onInfo` recibe los RAISE NOTICE. */
+/**
+ * Ejecuta el SQL (admite varias sentencias). `onInfo` recibe los RAISE NOTICE.
+ * @returns tablas de resultados de los SELECT: [{ columns, rows }]
+ */
 export async function runBatch(client, batch, { onInfo } = {}) {
   const pending = [];
   const onNotice = (n) => pending.push(onInfo(n.message));
   if (onInfo) client.on('notice', onNotice);
   try {
-    await client.query(batch);
+    const result = await client.query(batch);
+    // Varias sentencias -> array de Result; solo las que devuelven columnas (SELECT, RETURNING...).
+    return (Array.isArray(result) ? result : [result])
+      .filter((r) => r?.fields?.length)
+      .map((r) => ({ columns: r.fields.map((f) => f.name), rows: r.rows }));
   } finally {
     if (onInfo) client.off('notice', onNotice);
     await Promise.all(pending);

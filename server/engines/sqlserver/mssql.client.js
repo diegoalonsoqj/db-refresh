@@ -47,13 +47,20 @@ export async function runQuery(pool, query, params = {}) {
   return recordset ?? [];
 }
 
-/** Ejecuta un lote T-SQL tal cual (sin `GO`). `onInfo` recibe los PRINT. */
+/**
+ * Ejecuta un lote T-SQL tal cual (sin `GO`). `onInfo` recibe los PRINT.
+ * @returns tablas de resultados de los SELECT: [{ columns, rows }]
+ */
 export async function runBatch(pool, batch, { onInfo } = {}) {
   const request = pool.request();
   const pending = [];
   if (onInfo) request.on('info', (m) => pending.push(onInfo(m.message)));
   try {
-    await request.batch(batch);
+    const result = await request.batch(batch);
+    return (result?.recordsets ?? []).map((rs) => ({
+      columns: rs.columns ? Object.keys(rs.columns) : Object.keys(rs[0] ?? {}),
+      rows: [...rs],
+    }));
   } finally {
     await Promise.all(pending);
   }
