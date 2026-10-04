@@ -46,7 +46,17 @@ export async function withConnection(conn, database, fn) {
   }
 }
 
-/** Ejecuta el SQL (admite varias sentencias). MySQL no tiene PRINT: `onInfo` no se usa. */
+/**
+ * Ejecuta el SQL (admite varias sentencias). MySQL no tiene PRINT: `onInfo` no se usa.
+ * @returns tablas de resultados de los SELECT: [{ columns, rows }]
+ */
 export async function runBatch(connection, batch) {
-  await connection.query({ sql: batch, timeout: config.worker.postScriptTimeoutMs });
+  const [results, fields] = await connection.query({ sql: batch, timeout: config.worker.postScriptTimeoutMs });
+  // Con varias sentencias: results/fields son arrays por sentencia; las que no son
+  // SELECT devuelven un ResultSetHeader (no array) y fields undefined.
+  const multi = Array.isArray(fields) && fields.some((f) => Array.isArray(f) || f === undefined);
+  const sets = multi ? results.map((r, i) => [r, fields[i]]) : [[results, fields]];
+  return sets
+    .filter(([r, f]) => Array.isArray(r) && Array.isArray(f))
+    .map(([r, f]) => ({ columns: f.map((c) => c.name), rows: r }));
 }
