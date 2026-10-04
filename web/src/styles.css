@@ -312,6 +312,7 @@ input[type="checkbox"] { width: 16px; height: 16px; }
   background: rgba(79, 124, 255, .15); color: var(--running); border-color: rgba(79,124,255,.4);
 }
 .badge.succeeded { background: rgba(46, 204, 113, .15); color: var(--ok); border-color: rgba(46,204,113,.4); }
+.badge.warned { background: rgba(240, 180, 41, .15); color: var(--warn); border-color: rgba(240,180,41,.4); }
 .badge.failed { background: rgba(255, 92, 92, .15); color: var(--err); border-color: rgba(255,92,92,.4); }
 .badge.cancelled { background: #2a3350; color: var(--muted); }
 

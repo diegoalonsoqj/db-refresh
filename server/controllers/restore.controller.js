@@ -30,6 +30,7 @@ export async function launchRestore(req, res, next) {
       bucketId: req.body.bucketId,
       bucketPath: req.body.bucketPath,
       method: req.body.method,
+      skipSqlOnFailure: req.body.skipSqlOnFailure,
       mapping: req.body.mapping,
       requestedBy: req.user?.id ?? null,
     });

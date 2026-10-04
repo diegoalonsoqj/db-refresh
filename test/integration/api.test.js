@@ -274,6 +274,15 @@ test('restore: validación de owner/BD de sistema y RBAC de BDs/usuarios en vivo
     assert.equal(native.status, 422);
     // Corrección de huérfanos sin conexión SQL en la instancia: 422 (no se encola).
     assert.equal((await launch([{ backupFile: 'a.bak', targetDb: 'ventas', fixOrphans: true }])).status, 422);
+    // ...salvo que se pida continuar aunque falle la conexión SQL (se omitirá con aviso).
+    const skip = await req('POST', '/restores', {
+      cookie, body: { instanceId: instId, bucketPath: 'gs://itest-b/x', skipSqlOnFailure: true, mapping: [{ backupFile: 'a.bak', targetDb: 'ventas', fixOrphans: true }] },
+    });
+    assert.equal(skip.status, 202);
+    await pool.query("UPDATE restore_jobs SET status = 'cancelled' WHERE id = $1", [skip.data.jobId]); // que ningún worker lo tome
+    const job = await req('GET', `/restores/${skip.data.jobId}`, { cookie });
+    assert.equal(job.data.skip_sql_on_failure, true);
+    await pool.query('DELETE FROM restore_jobs WHERE id = $1', [skip.data.jobId]);
     const logins = await req('GET', `/instances/${instId}/logins`, { cookie });
     assert.equal(logins.status, 200);
     assert.equal(logins.data.supported, true);

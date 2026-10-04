@@ -23,11 +23,16 @@ export async function launchRestore(req) {
   // alcance/esquema (solo nativo).
   const method = req.method ?? 'import';
   const items = validateMapping(instance.engine, req.mapping, method).map((m, idx) => ({ ...m, seq: idx + 1 }));
+  // Continuar sin conexión SQL: solo con el import de Cloud SQL (el nativo restaura por SQL).
+  const skipSqlOnFailure = req.skipSqlOnFailure === true;
+  if (skipSqlOnFailure && method === 'native') {
+    throw new ValidationError('«Continuar aunque falle la conexión SQL» no aplica al restore nativo: necesita la conexión para restaurar');
+  }
   // El restore nativo y la corrección de huérfanos se conectan por SQL a la IP privada:
   // exigen la conexión de la instancia.
   if (missingSqlCredentials(instance).length) {
     const why = method === 'native' ? 'El restore nativo'
-      : items.some((it) => it.fixOrphans) ? 'La corrección de usuarios huérfanos' : null;
+      : items.some((it) => it.fixOrphans) && !skipSqlOnFailure ? 'La corrección de usuarios huérfanos' : null;
     if (why) {
       throw new ValidationError(
         `${why} necesita la conexión SQL de la instancia (IP privada + credencial): configúrala en Catálogo → Instancias`,
@@ -43,6 +48,7 @@ export async function launchRestore(req) {
       requestedBy: req.requestedBy ?? null,
       bucketPath: req.bucketPath,
       method,
+      skipSqlOnFailure,
     },
     items,
   );

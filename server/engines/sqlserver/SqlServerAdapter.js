@@ -20,11 +20,7 @@ export class SqlServerAdapter extends EngineAdapter {
   /** Pre-check: si algún item corrige usuarios huérfanos, la conexión SQL debe funcionar. */
   async preflight(items = []) {
     await super.preflight(items);
-    if (items.some((it) => it.fix_orphans) && !this.postScripts.length) {
-      await this.ctx.log('info', 'Verificando la conexión SQL para la corrección de usuarios huérfanos.');
-      await this.verifyPostScriptsConnection();
-      await this.ctx.log('info', 'Conexión SQL verificada.');
-    }
+    if (items.some((it) => it.fix_orphans)) await this.ensureSqlConnection('la corrección de usuarios huérfanos');
   }
 
   /**

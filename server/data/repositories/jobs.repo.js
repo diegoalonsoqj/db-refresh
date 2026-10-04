@@ -4,7 +4,7 @@ import { query, withTransaction } from '../pool.js';
 
 /**
  * Crea un job y sus items en una sola transacción.
- * @param {object} job  { instanceId, bucketId, engine, requestedBy, bucketPath, method }
+ * @param {object} job  { instanceId, bucketId, engine, requestedBy, bucketPath, method, skipSqlOnFailure }
  * @param {Array}  items [{ backupFile, targetDb, seq, sizeBytes, importUser, scope, schemaName, fixOrphans, dbOwner }]
  * @returns job creado con sus items
  */
@@ -12,10 +12,11 @@ export async function createJob(job, items) {
   return withTransaction(async (client) => {
     const { rows } = await client.query(
       `INSERT INTO restore_jobs
-         (instance_ref, bucket_ref, engine, requested_by, bucket_path, method, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'pending')
+         (instance_ref, bucket_ref, engine, requested_by, bucket_path, method, skip_sql_on_failure, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
        RETURNING *`,
-      [job.instanceId, job.bucketId ?? null, job.engine, job.requestedBy ?? null, job.bucketPath, job.method ?? 'import'],
+      [job.instanceId, job.bucketId ?? null, job.engine, job.requestedBy ?? null, job.bucketPath,
+        job.method ?? 'import', job.skipSqlOnFailure ?? false],
     );
     const created = rows[0];
 
@@ -67,7 +68,7 @@ export async function claimNextJob(workerId) {
 /** Lista los jobs recientes (para el historial), con instancia/proyecto. */
 export async function listJobs({ limit = 50 } = {}) {
   const { rows } = await query(
-    `SELECT j.id, j.engine, j.status, j.bucket_path, j.error_message,
+    `SELECT j.id, j.engine, j.status, j.bucket_path, j.error_message, j.warning_message,
             j.created_at, j.started_at, j.finished_at,
             i.instance_name, p.project_id
        FROM restore_jobs j
@@ -95,13 +96,14 @@ export async function getJobWithItems(jobId) {
   return { ...rows[0], items };
 }
 
-export async function finishJob(jobId, status, errorMessage = null) {
+/** `warningMessage`: el job terminó bien pero se omitió algún paso ("OK con avisos"). */
+export async function finishJob(jobId, status, errorMessage = null, warningMessage = null) {
   await query(
     `UPDATE restore_jobs
-        SET status = $2, error_message = $3, finished_at = now(),
+        SET status = $2, error_message = $3, warning_message = $4, finished_at = now(),
             locked_at = NULL, locked_by = NULL
       WHERE id = $1`,
-    [jobId, status, errorMessage],
+    [jobId, status, errorMessage, warningMessage],
   );
 }
 

@@ -231,6 +231,11 @@ END $$;
 --   fix_orphans: remapear usuarios de BD a logins del mismo nombre.
 --   orphan_db_owner: login a asignar si el owner de la BD quedó huérfano (NULL = no tocar).
 ALTER TABLE restore_job_items ADD COLUMN IF NOT EXISTS fix_orphans boolean NOT NULL DEFAULT false;
+-- Migración idempotente: continuar el restore aunque falle la conexión SQL
+-- (se omiten post-scripts y corrección de huérfanos) y aviso final del job
+-- ("OK con avisos" = status succeeded + warning_message).
+ALTER TABLE restore_jobs ADD COLUMN IF NOT EXISTS skip_sql_on_failure boolean NOT NULL DEFAULT false;
+ALTER TABLE restore_jobs ADD COLUMN IF NOT EXISTS warning_message text;
 ALTER TABLE restore_job_items ADD COLUMN IF NOT EXISTS orphan_db_owner text;
 
 CREATE TABLE IF NOT EXISTS job_events (

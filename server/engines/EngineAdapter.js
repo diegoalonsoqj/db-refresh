@@ -107,10 +107,28 @@ export class EngineAdapter {
   async preflight(_items = []) {
     await this.assertInstanceRunning();
     await this.waitInstanceIdle();
-    if (this.postScripts.length) {
-      await this.ctx.log('info', `Verificando la conexión SQL para ${this.postScripts.length} post-script(s).`);
+    if (this.postScripts.length) await this.ensureSqlConnection(`${this.postScripts.length} post-script(s)`);
+  }
+
+  /**
+   * Verifica (una vez por job) la conexión SQL que necesitan los post-scripts y la
+   * corrección de huérfanos. Si falla: sin la opción `skipSqlOnFailure` lanza (el
+   * pre-check aborta sin tocar nada); con ella deja `sqlUnavailable` con el motivo
+   * y el job restaura igualmente, omitiendo esos pasos.
+   */
+  async ensureSqlConnection(purpose) {
+    if (this.sqlChecked || this.sqlUnavailable) return;
+    await this.ctx.log('info', `Verificando la conexión SQL para ${purpose}.`);
+    try {
       await this.verifyPostScriptsConnection();
-      await this.ctx.log('info', 'Conexión SQL para post-scripts verificada.');
+      this.sqlChecked = true;
+      await this.ctx.log('info', 'Conexión SQL verificada.');
+    } catch (err) {
+      if (!this.ctx.skipSqlOnFailure) throw err;
+      this.sqlUnavailable = err.message;
+      await this.ctx.log('warning',
+        `No hay conexión SQL (${err.message}). Se restaurará igualmente, como se pidió al lanzar; ` +
+          'se omitirán los post-scripts y la corrección de usuarios huérfanos.');
     }
   }
 

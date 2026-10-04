@@ -9,6 +9,11 @@ import { publish } from './progress.js';
 import { DomainError } from '../domain/errors.js';
 import { describeGcpError } from '../gcp/cloudsql.client.js';
 
+/** Añade el motivo de la causa salvo que el mensaje ya lo contenga (evita repetirlo). */
+export function withReason(message, reason) {
+  return reason && !String(message).includes(reason) ? `${message} — ${reason}` : message;
+}
+
 /** Crea el logger de eventos ligado a un job (persiste + publica para SSE). */
 function makeLogger(jobId) {
   return async (level, message, { itemId = null } = {}) => {
@@ -34,6 +39,7 @@ export async function runJob(job, logger) {
     bucketPath: job.bucket_path,
     log,
     postScripts: await listActiveForInstance(instance.id),
+    skipSqlOnFailure: job.skip_sql_on_failure === true,
     reportOperation: (itemId, operation) =>
       jobsRepo.updateItemStatus(itemId, 'importing', { gcpOperation: operation }),
   };
@@ -60,7 +66,7 @@ export async function runJob(job, logger) {
     await adapter.preflight(items);
   } catch (err) {
     const reason = describeGcpError(err.cause);
-    const message = reason ? `${err.message} — ${reason}` : err.message;
+    const message = withReason(err.message, reason);
     logger?.error({ err, jobId: job.id }, 'Pre-check fallido');
     await log('error', `Pre-check fallido; no se ha modificado ninguna BD: ${message}`);
     for (const item of items) {
@@ -76,6 +82,7 @@ export async function runJob(job, logger) {
 
   let allOk = true;
   let firstError = null; // se muestra como error del job (además del log)
+  const warnings = new Set(); // pasos omitidos: el job termina "OK con avisos"
 
   for (const [idx, item] of items.entries()) {
     try {
@@ -103,7 +110,14 @@ export async function runJob(job, logger) {
         await log('info', `Restauración completada: ${item.target_db}.`, { itemId: item.id });
         // Tras restaurar: corrección de usuarios huérfanos (SQL Server). Sus fallos
         // son avisos; la restauración sigue contando como correcta.
-        if (item.fix_orphans && adapter.fixOrphans) await adapter.fixOrphans(item);
+        if (item.fix_orphans && adapter.fixOrphans) {
+          if (adapter.sqlUnavailable) {
+            warnings.add('se omitió la corrección de usuarios huérfanos');
+            await log('warning', `Corrección de usuarios huérfanos de ${item.target_db} omitida: no hay conexión SQL.`, { itemId: item.id });
+          } else {
+            await adapter.fixOrphans(item);
+          }
+        }
         await jobsRepo.updateItemStatus(item.id, 'succeeded', { markFinished: true });
       } else {
         allOk = false;
@@ -117,7 +131,7 @@ export async function runJob(job, logger) {
       const domain = err instanceof DomainError;
       // El motivo real (p.ej. el error de la operación de Cloud SQL) va en `cause`.
       const reason = describeGcpError(err.cause);
-      const message = reason ? `${err.message} — ${reason}` : err.message;
+      const message = withReason(err.message, reason);
       firstError ??= `${item.target_db}: ${message}`;
       logger?.error({ err, jobId: job.id, itemId: item.id }, 'Item fallido');
       await jobsRepo.updateItemStatus(item.id, 'failed', {
@@ -133,6 +147,9 @@ export async function runJob(job, logger) {
   // 4) Post-scripts solo si TODO salió OK (igual que el script original)
   if (allOk && adapter.postScripts.length === 0) {
     await log('info', 'La instancia no tiene post-scripts configurados.');
+  } else if (allOk && adapter.sqlUnavailable) {
+    warnings.add(`no se ejecutaron ${adapter.postScripts.length} post-script(s)`);
+    await log('warning', `No se ejecutan los ${adapter.postScripts.length} post-script(s): no hay conexión SQL. Ejecútalos cuando se restablezca (Catálogo → Instancias → Post-scripts → Ejecutar).`);
   } else if (allOk) {
     try {
       await log('info', `Restauraciones completadas. Ejecutando ${adapter.postScripts.length} post-script(s).`);
@@ -146,6 +163,14 @@ export async function runJob(job, logger) {
     await log('warning', 'No se ejecutan los post-scripts: hubo restauraciones fallidas.');
   }
 
-  await jobsRepo.finishJob(job.id, allOk ? 'succeeded' : 'failed', allOk ? null : (firstError ?? 'Ver eventos del job'));
+  const warning = warnings.size
+    ? `Sin conexión SQL (${adapter.sqlUnavailable}): ${[...warnings].join(' y ')}.`
+    : null;
+  await jobsRepo.finishJob(
+    job.id,
+    allOk ? 'succeeded' : 'failed',
+    allOk ? null : (firstError ?? 'Ver eventos del job'),
+    warning,
+  );
   await log('info', 'Proceso finalizado.');
 }

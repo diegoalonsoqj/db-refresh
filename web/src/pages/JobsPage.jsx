@@ -34,7 +34,7 @@ export default function JobsPage() {
           <tbody>
             {jobs.map((j) => (
               <tr key={j.id}>
-                <td><StatusBadge status={j.status} /></td>
+                <td><StatusBadge status={j.status} warning={j.warning_message} /></td>
                 <td>
                   {j.instance_name}
                   <div className="muted small">{j.project_id}</div>
