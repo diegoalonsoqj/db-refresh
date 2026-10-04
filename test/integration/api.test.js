@@ -8,6 +8,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from '../../server/app.js';
+import { config } from '../../server/config/index.js';
 import { pool, closePool } from '../../server/data/pool.js';
 import { upsertLocalUser } from '../../server/data/repositories/users.repo.js';
 import { hashPassword } from '../../server/auth/strategies/local.js';
@@ -338,6 +339,59 @@ test('credenciales SQL (admin): CRUD sin exponer la contraseña, en uso 409 y RB
     assert.equal((await req('POST', `/instances/${ids.inst}/test-connection`, { cookie: viewer.cookie })).status, 403);
   } finally {
     if (ids.inst) await req('DELETE', `/instances/${ids.inst}`, { cookie });
+    if (ids.cred) await req('DELETE', `/credentials/${ids.cred}`, { cookie });
+    if (ids.proj) await req('DELETE', `/projects/${ids.proj}`, { cookie });
+  }
+});
+
+test('post-scripts: "Ejecutar" ahora devuelve la salida (NOTICE y tablas) y exige conexión SQL', async (t) => {
+  if (!dbOk) return t.skip('BD no disponible');
+  const { cookie } = await login(ADMIN, PW);
+  const ids = { proj: null, cred: null, inst: null, bare: null };
+  try {
+    const proj = await req('POST', '/projects', { cookie, body: { projectId: `${PROJ}-run` } });
+    ids.proj = proj.data.id;
+    // Instancia "PostgreSQL" que apunta al PostgreSQL local de la app (ejecución real).
+    const cred = await req('POST', '/credentials', {
+      cookie, body: { name: `${PROJ}-run-cred`, engine: 'postgres', username: config.db.user, password: config.db.password },
+    });
+    ids.cred = cred.data.id;
+    const inst = await req('POST', '/instances', {
+      cookie, body: { projectRef: ids.proj, instanceName: 'itest-run-pg', engine: 'postgres', dbHost: config.db.host, dbPort: config.db.port, credentialRef: ids.cred },
+    });
+    ids.inst = inst.data.id;
+    const script = await req('POST', `/instances/${ids.inst}/post-scripts`, {
+      cookie, body: { name: 'reporte', databaseName: config.db.database, isActive: false,
+        sqlText: "DO $$ BEGIN RAISE NOTICE 'hola desde el script'; END $$; SELECT 'SolPago' AS basedatos, 'ERROR' AS estado;" },
+    });
+    assert.equal(script.status, 201);
+
+    const run = await req('POST', `/instances/${ids.inst}/post-scripts/${script.data.id}/run`, { cookie, body: {} });
+    assert.equal(run.status, 200);
+    assert.equal(run.data.ok, true);
+    const text = run.data.lines.map((l) => `${l.level}:${l.message}`).join(' | ');
+    assert.match(text, /hola desde el script/);
+    assert.match(text, /basedatos\s+estado/);
+    assert.ok(run.data.lines.some((l) => l.level === 'warning' && /SolPago\s+ERROR/.test(l.message)));
+
+    // Un script que falla devuelve ok:false con el error (no 500).
+    const bad = await req('POST', `/instances/${ids.inst}/post-scripts`, {
+      cookie, body: { name: 'roto', databaseName: config.db.database, isActive: false, sqlText: 'SELECT * FROM tabla_que_no_existe_itest' },
+    });
+    const runBad = await req('POST', `/instances/${ids.inst}/post-scripts/${bad.data.id}/run`, { cookie, body: {} });
+    assert.equal(runBad.status, 200);
+    assert.equal(runBad.data.ok, false);
+    assert.match(runBad.data.error, /tabla_que_no_existe_itest/);
+
+    // Sin conexión SQL: 422. Viewer: 403.
+    const bare = await req('POST', '/instances', { cookie, body: { projectRef: ids.proj, instanceName: 'itest-run-bare', engine: 'postgres' } });
+    ids.bare = bare.data.id;
+    const s2 = await req('POST', `/instances/${ids.bare}/post-scripts`, { cookie, body: { name: 'x', isActive: false, sqlText: 'SELECT 1' } });
+    assert.equal((await req('POST', `/instances/${ids.bare}/post-scripts/${s2.data.id}/run`, { cookie, body: {} })).status, 422);
+    const viewer = await login(VIEWER, PW);
+    assert.equal((await req('POST', `/instances/${ids.inst}/post-scripts/${script.data.id}/run`, { cookie: viewer.cookie, body: {} })).status, 403);
+  } finally {
+    for (const id of [ids.inst, ids.bare]) if (id) await req('DELETE', `/instances/${id}`, { cookie });
     if (ids.cred) await req('DELETE', `/credentials/${ids.cred}`, { cookie });
     if (ids.proj) await req('DELETE', `/projects/${ids.proj}`, { cookie });
   }

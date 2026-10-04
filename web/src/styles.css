@@ -448,3 +448,7 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 /* Lanzar restore: la tabla de backups necesita más ancho que un formulario normal. */
 .stack.stack-wide { max-width: 1100px; }
 .stack-wide > label, .stack-wide > .alert, .stack-wide > .row, .stack-wide > div:not(.card) { max-width: 640px; }
+/* Salida de "Ejecutar" en el modal de post-scripts (sin columna de hora). */
+.run-output { margin-top: 1rem; display: flex; flex-direction: column; gap: .5rem; }
+.run-log { height: auto; max-height: 320px; }
+.run-log .logline { grid-template-columns: 3.4rem 1fr; }

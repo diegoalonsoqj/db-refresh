@@ -19,3 +19,5 @@ export const remove = wrap(async (req, res) => {
   await postScripts.remove(req.params.id, req.params.scriptId);
   res.status(204).end();
 });
+export const run = wrap(async (req, res) =>
+  res.json(await postScripts.runNow(req.params.id, req.params.scriptId)));

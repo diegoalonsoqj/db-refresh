@@ -3,8 +3,7 @@
 import { DomainError, InfraError } from '../domain/errors.js';
 import * as csql from '../gcp/cloudsql.client.js';
 import { config } from '../config/index.js';
-import { splitSqlBatches } from '../lib/sqlBatches.js';
-import { formatResultSet } from '../lib/resultSets.js';
+import { runPostScript } from './sql/postScriptRunner.js';
 import { sqlRunnerFor } from './sql/runners.js';
 import { resolveSqlConnection } from './sql/connection.js';
 
@@ -193,33 +192,7 @@ export class EngineAdapter {
     const runner = this._requireRunner();
     const conn = await resolveSqlConnection(this.ctx.instance);
     for (const script of this.postScripts) {
-      const batches = splitSqlBatches(script.sql_text);
-      const where = script.database_name ?? runner.defaultDatabase ?? 'BD por defecto';
-      await this.ctx.log('info', `Post-script "${script.name}" en ${where}: ${batches.length} lote(s).`);
-      try {
-        await runner.withConnection(conn, script.database_name, async (handle) => {
-          for (const [i, batch] of batches.entries()) {
-            try {
-              const sets = await runner.runBatch(handle, batch, { onInfo: (msg) => this.ctx.log('info', `  ${msg}`) });
-              // Tablas de reporte del script (SELECT): al log, con las filas de error como aviso.
-              for (const set of sets ?? []) {
-                for (const [level, text] of formatResultSet(set.rows, set.columns)) await this.ctx.log(level, `  ${text}`);
-              }
-            } catch (err) {
-              throw new InfraError(`lote ${i + 1}/${batches.length}: ${err.message}`, {
-                code: 'POST_SCRIPT_FAILED',
-                cause: err,
-              });
-            }
-          }
-        });
-      } catch (err) {
-        throw new InfraError(`Post-script "${script.name}" falló: ${err.message}`, {
-          code: 'POST_SCRIPT_FAILED',
-          cause: err,
-        });
-      }
-      await this.ctx.log('info', `Post-script "${script.name}" completado.`);
+      await runPostScript({ runner, conn, script, log: (level, msg) => this.ctx.log(level, msg) });
     }
   }
 }
