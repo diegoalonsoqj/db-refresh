@@ -91,6 +91,11 @@ export default function LaunchPage() {
   const bucketPath = basePath ? [basePath, ...subPath].join('/') : '';
 
   const findDb = (name) => dbs?.find((d) => d.name.toLowerCase() === name.trim().toLowerCase());
+  // BD existente que corresponde a un backup: nombre exacto o, si no, la de nombre más largo
+  // del que el archivo es <BD>_<algo> (p.ej. QSPMS_INTERSEGURO_PRD_20261002.bak -> QSPMS_INTERSEGURO).
+  const matchDbForFile = (stem) => findDb(stem) ?? (dbs ?? [])
+    .filter((d) => stem.toLowerCase().startsWith(`${d.name.toLowerCase()}_`))
+    .sort((a, b) => b.name.length - a.name.length)[0];
   const existsDb = (name) => !!findDb(name);
   // Solo el alcance 'BD completa' elimina la BD; por esquema solo se reemplaza ese esquema.
   const replaced = dbs ? rows.filter((r) => r.scope !== 'schema' && r.targetDb && existsDb(r.targetDb)) : [];
@@ -136,7 +141,7 @@ export default function LaunchPage() {
       }
       // Sugerencia: el nombre del archivo; si coincide con una BD existente, se preselecciona esa.
       const suggested = fileName.replace(/\.(bak|sql|gz|tar)$/gi, '');
-      const match = findDb(suggested);
+      const match = matchDbForFile(suggested);
       return [...prev, {
         backupFile: fileName, targetDb: match?.name ?? suggested, isNew: !match, importUser: '',
         scope: 'database', schemaName: '', fixOrphans: false, dbOwner: '',
@@ -335,11 +340,10 @@ export default function LaunchPage() {
               {orphansOn && orphansReady && ' «Corregir huérfanos»: tras restaurar la BD, remapea sus usuarios al login del mismo nombre (los que no tengan login se reportan) y, si se elige, asigna el owner de la BD.'}
             </div>
             {orphansOn && !orphansReady && (
-              <div className="alert warn small">
-                La corrección de usuarios huérfanos no está disponible: {logins.reason}.{' '}
-                {user?.role === 'admin'
-                  ? <>Configura la IP privada y la credencial de la instancia en <Link to="/catalog">Catálogo</Link> → Instancias.</>
-                  : 'Pide a un administrador que configure la conexión SQL de la instancia.'}
+              <div className="muted small" title={logins.reason}>
+                Corrección de usuarios huérfanos no disponible (sin conexión SQL a la instancia). El restore no la
+                necesita: se hace por el API de GCP.
+                {user?.role === 'admin' && <> Para usarla, revisa la IP privada y la credencial en <Link to="/catalog">Catálogo</Link> → Instancias.</>}
               </div>
             )}
             {orphansOn && orphansReady && rows.length > 1 && (
