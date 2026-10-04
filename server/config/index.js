@@ -106,6 +106,8 @@ export const config = {
   worker: {
     id: process.env.WORKER_ID ?? `worker-${process.pid}`,
     pollIntervalMs: int('WORKER_POLL_INTERVAL_MS', 5000),
+    // Jobs a la vez (de instancias distintas; los de una misma instancia van en orden).
+    concurrency: Math.max(1, int('WORKER_CONCURRENCY', 3)),
     operationTimeoutSeconds: int('OPERATION_TIMEOUT_SECONDS', 10800),
     operationPollIntervalSeconds: int('OPERATION_POLL_INTERVAL_SECONDS', 30),
     // Pre-check: cuánto esperar a que la instancia no tenga operaciones en curso
