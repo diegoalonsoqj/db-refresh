@@ -244,6 +244,9 @@ ALTER TABLE restore_job_items ADD COLUMN IF NOT EXISTS fix_orphans boolean NOT N
 ALTER TABLE restore_jobs ADD COLUMN IF NOT EXISTS skip_sql_on_failure boolean NOT NULL DEFAULT false;
 ALTER TABLE restore_jobs ADD COLUMN IF NOT EXISTS warning_message text;
 ALTER TABLE restore_job_items ADD COLUMN IF NOT EXISTS orphan_db_owner text;
+-- Migración idempotente: borrar la BD destino por SQL (credencial de la instancia) en
+-- lugar del Admin API; solo PostgreSQL, para BD cuyo owner no es cloudsqlsuperuser.
+ALTER TABLE restore_job_items ADD COLUMN IF NOT EXISTS drop_via_sql boolean NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS job_events (
   id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

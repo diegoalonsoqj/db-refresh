@@ -41,9 +41,10 @@ export class SqlDumpAdapter extends EngineAdapter {
     return { ok: true, meta };
   }
 
-  // Flujo destructivo: eliminar la BD y recrearla vacía para recibir el import.
-  async prepareTarget(targetDb) {
-    await this.dropIfExists(targetDb);
+  // Flujo destructivo: eliminar la BD (Admin API o, si se pidió, por SQL) y
+  // recrearla vacía para recibir el import.
+  async prepareTarget(targetDb, item) {
+    await this.dropTarget(targetDb, item);
     await this.createEmptyDatabase(targetDb);
   }
 

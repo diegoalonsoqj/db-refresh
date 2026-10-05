@@ -279,6 +279,24 @@ test('restore: validación de owner/BD de sistema y RBAC de BDs/usuarios en vivo
       cookie, body: { instanceId: instId, bucketPath: 'gs://itest-b/x', method: 'native', mapping: [{ backupFile: 'a.tar', targetDb: 'ventas' }] },
     });
     assert.equal(native.status, 422);
+    // Borrar por SQL: solo PostgreSQL...
+    assert.equal((await launch([{ backupFile: 'a.bak', targetDb: 'ventas', dropViaSql: true }])).status, 422);
+    // ...y exige la conexión SQL de la instancia, aunque se pida continuar sin ella.
+    const pgInst = await req('POST', '/instances', {
+      cookie, body: { projectRef: proj.data.id, instanceName: 'itest-pg-drop', engine: 'postgres' },
+    });
+    try {
+      for (const skipSqlOnFailure of [false, true]) {
+        const r = await req('POST', '/restores', {
+          cookie,
+          body: { instanceId: pgInst.data.id, bucketPath: 'gs://itest-b/x', skipSqlOnFailure, mapping: [{ backupFile: 'd.sql.gz', targetDb: 'PaynovaBD', dropViaSql: true }] },
+        });
+        assert.equal(r.status, 422);
+        assert.match(r.data.error?.message ?? JSON.stringify(r.data), /borrado de BD por SQL/);
+      }
+    } finally {
+      await req('DELETE', `/instances/${pgInst.data.id}`, { cookie });
+    }
     // Corrección de huérfanos sin conexión SQL en la instancia: 422 (no se encola).
     assert.equal((await launch([{ backupFile: 'a.bak', targetDb: 'ventas', fixOrphans: true }])).status, 422);
     // ...salvo que se pida continuar aunque falle la conexión SQL (se omitirá con aviso).

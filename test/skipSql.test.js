@@ -40,6 +40,13 @@ test('ensureSqlConnection: los pre-scripts exigen la conexión aunque se pidiera
   assert.equal(ad.sqlUnavailable, undefined);
 });
 
+test('ensureSqlConnection: un paso obligatorio falla si la conexión ya se marcó como no disponible', async () => {
+  const c = ctx(true);
+  const ad = new SqlServerAdapter(c);
+  await ad.ensureSqlConnection('1 post-script(s)'); // opcional: marca sqlUnavailable
+  await assert.rejects(ad.ensureSqlConnection('el borrado por SQL de 1 BD', { required: true }), DomainError);
+});
+
 test('withReason: no repite el motivo si el mensaje ya lo incluye', () => {
   const msg = 'No se pudo conectar a SQL Server 10.49.34.24:1433: Failed to connect to 10.49.34.24:1433 in 15000ms';
   assert.equal(withReason(msg, 'Failed to connect to 10.49.34.24:1433 in 15000ms'), msg);

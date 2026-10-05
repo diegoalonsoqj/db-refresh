@@ -85,6 +85,9 @@ export default function LaunchPage() {
   const allOrphans = rows.length > 0 && rows.every((r) => r.fixOrphans);
   const setAllOrphans = (on) => setRows((prev) => prev.map((r) => ({ ...r, fixOrphans: on })));
   const nativeReady = Boolean(instance?.db_host && instance?.credential_ref);
+  // Borrar la BD por SQL (credencial) en vez del Admin API: solo PostgreSQL, BD completa y existente.
+  // Hace falta si su owner no es cloudsqlsuperuser (p.ej. BD creadas por otra herramienta).
+  const isPg = instance?.engine === 'postgres';
   const selectedBucket = (buckets ?? []).find((b) => b.id === bucketId);
   const basePath = selectedBucket ? bucketPathOf(selectedBucket) : '';
   // Carpeta actual (base del bucket + subcarpetas): es la ruta que se lista y la que usa el job.
@@ -97,6 +100,8 @@ export default function LaunchPage() {
     .filter((d) => stem.toLowerCase().startsWith(`${d.name.toLowerCase()}_`))
     .sort((a, b) => b.name.length - a.name.length)[0];
   const existsDb = (name) => !!findDb(name);
+  // Sin la lista de BDs (falló databases.list) no se sabe si existe: se ofrece igual.
+  const canDropViaSql = (r) => isPg && r.scope !== 'schema' && !!r.targetDb.trim() && (!dbs || existsDb(r.targetDb));
   // Solo el alcance 'BD completa' elimina la BD; por esquema solo se reemplaza ese esquema.
   const replaced = dbs ? rows.filter((r) => r.scope !== 'schema' && r.targetDb && existsDb(r.targetDb)) : [];
   const replacedSchemas = rows.filter((r) => r.scope === 'schema' && r.schemaName);
@@ -144,7 +149,7 @@ export default function LaunchPage() {
       const match = matchDbForFile(suggested);
       return [...prev, {
         backupFile: fileName, targetDb: match?.name ?? suggested, isNew: !match, importUser: '',
-        scope: 'database', schemaName: '', fixOrphans: false, dbOwner: '',
+        scope: 'database', schemaName: '', fixOrphans: false, dbOwner: '', dropViaSql: false,
       }];
     });
 
@@ -193,6 +198,7 @@ export default function LaunchPage() {
         ...(r.importUser ? { importUser: r.importUser } : {}),
         ...(native && r.scope === 'schema' ? { scope: 'schema', schemaName: r.schemaName.trim() } : {}),
         ...(orphansOn && r.fixOrphans ? { fixOrphans: true, ...(r.dbOwner ? { dbOwner: r.dbOwner } : {}) } : {}),
+        ...(r.dropViaSql && canDropViaSql(r) ? { dropViaSql: true } : {}),
       }));
       const d = await api.post('/restores', {
         instanceId, bucketId, bucketPath, method, mapping, ...(!native && skipSql ? { skipSqlOnFailure: true } : {}),
@@ -337,6 +343,7 @@ export default function LaunchPage() {
               «Nueva BD» para escribir el nombre.
               {native && ' Con alcance «Esquema» solo se reemplaza ese esquema dentro de una BD existente.'}
               {owners.supported && ' El owner es el rol con el que se restaura: los objetos quedan a su nombre.'}
+              {isPg && ' «Borrar por SQL»: borra la BD existente con la credencial de la instancia en vez del API de GCP; márcalo si su owner no es cloudsqlsuperuser (el API no puede borrarla).'}
               {orphansOn && orphansReady && ' «Corregir huérfanos»: tras restaurar la BD, remapea sus usuarios al login del mismo nombre (los que no tengan login se reportan) y, si se elige, asigna el owner de la BD.'}
             </div>
             {orphansOn && !orphansReady && (
@@ -421,6 +428,16 @@ export default function LaunchPage() {
                             {r.scope === 'schema' && r.schemaName && (
                               <span className="pill warn" title="Se elimina el esquema (CASCADE) y se restaura">esquema se reemplaza</span>
                             )}
+                            {canDropViaSql(r) && (
+                              <label className="checkline small"
+                                title={nativeReady
+                                  ? 'DROP DATABASE por SQL con la credencial de la instancia (para BD cuyo owner no es cloudsqlsuperuser)'
+                                  : 'Requiere la conexión SQL de la instancia (IP privada + credencial)'}>
+                                <input type="checkbox" checked={!!r.dropViaSql} disabled={!nativeReady}
+                                  onChange={(e) => setRow(f.fileName, 'dropViaSql', e.target.checked)} />
+                                Borrar por SQL
+                              </label>
+                            )}
                           </div>
                         )}
                       </td>
@@ -471,7 +488,7 @@ export default function LaunchPage() {
         {replaced.length > 0 && (
           <div className="alert warn">
             Se eliminarán y reemplazarán {replaced.length} BD existente(s):{' '}
-            <span className="mono">{replaced.map((r) => r.targetDb.trim()).join(', ')}</span>
+            <span className="mono">{replaced.map((r) => `${r.targetDb.trim()}${r.dropViaSql ? ' (por SQL)' : ''}`).join(', ')}</span>
           </div>
         )}
         {replacedSchemas.length > 0 && (

@@ -3,7 +3,7 @@
 // contra la IP privada de la instancia con la credencial SQL del catálogo.
 //
 // Alcance por item:
-//  - 'database': DROP de la BD (Admin API) + CREATE vacía + restore completo.
+//  - 'database': DROP de la BD (Admin API, o por SQL si se pidió) + CREATE vacía + restore completo.
 //  - 'schema'  : en la BD existente, DROP SCHEMA ... CASCADE y restore de ese
 //                esquema (tar: pg_restore --schema, que no crea el esquema, así
 //                que se crea antes; plano: el dump debe ser de ese esquema
@@ -91,7 +91,7 @@ export class PgNativeAdapter extends EngineAdapter {
       await this._exec(targetDb, `DROP SCHEMA IF EXISTS ${schema} CASCADE;${create}`);
       return;
     }
-    await this.dropIfExists(targetDb);
+    await this.dropTarget(targetDb, item);
     await this.createEmptyDatabase(targetDb);
     if (role) {
       await this.ctx.log('info', `Asignando ${role} como owner de la BD ${targetDb}.`, { itemId: item.id });

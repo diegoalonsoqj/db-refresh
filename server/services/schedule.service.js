@@ -8,6 +8,7 @@ import * as restoreService from './restore.service.js';
 import { mapPgError } from '../data/pgErrors.js';
 import { NotFoundError, ValidationError } from '../domain/errors.js';
 import { validateMapping } from '../domain/restoreMapping.js';
+import { missingSqlCredentials } from '../domain/instance.js';
 
 /** Valida referencias e insumos comunes de creación/edición. */
 async function validateInput(input) {
@@ -22,12 +23,19 @@ async function validateInput(input) {
     throw new ValidationError(`cron_expr inválida: ${input.cronExpr}`);
   }
 
+  // [{ backupFile, targetDb, importUser, ... }]: se revalida al disparar (launchRestore).
+  const mapping = validateMapping(instance.engine, input.mapping);
+  if (mapping.some((m) => m.dropViaSql) && missingSqlCredentials(instance).length) {
+    throw new ValidationError(
+      'El borrado de BD por SQL necesita la conexión SQL de la instancia (IP privada + credencial): configúrala en Catálogo → Instancias',
+    );
+  }
+
   return {
     instanceRef,
     bucketRef,
     cronExpr: input.cronExpr,
-    // [{ backupFile, targetDb, importUser }]: se revalida al disparar (launchRestore).
-    mapping: validateMapping(instance.engine, input.mapping),
+    mapping,
     isActive: input.isActive ?? true,
   };
 }

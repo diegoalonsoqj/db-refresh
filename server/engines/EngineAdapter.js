@@ -4,6 +4,7 @@ import { DomainError, InfraError } from '../domain/errors.js';
 import * as csql from '../gcp/cloudsql.client.js';
 import { config } from '../config/index.js';
 import { runPostScript } from './sql/postScriptRunner.js';
+import { dropDatabaseViaSql } from './postgres/dropViaSql.js';
 import { sqlRunnerFor } from './sql/runners.js';
 import { resolveSqlConnection } from './sql/connection.js';
 
@@ -74,6 +75,31 @@ export class EngineAdapter {
     }
   }
 
+  /**
+   * Borra la BD destino antes de restaurar: por SQL si el item lo pide (opción
+   * «Borrar por SQL», PostgreSQL) o con el Admin API (por defecto).
+   */
+  async dropTarget(targetDb, item) {
+    if (item?.drop_via_sql) return this.dropViaSql(targetDb, item);
+    return this.dropIfExists(targetDb);
+  }
+
+  /**
+   * DROP DATABASE por SQL con la credencial de la instancia. Para BD cuyo owner no
+   * es cloudsqlsuperuser, que el Admin API no puede borrar. Solo PostgreSQL.
+   */
+  async dropViaSql(targetDb, item) {
+    if (this.ctx.instance?.engine !== 'postgres') {
+      throw new DomainError(`El borrado por SQL solo aplica a PostgreSQL`, { code: 'DROP_VIA_SQL_UNSUPPORTED' });
+    }
+    const conn = await resolveSqlConnection(this.ctx.instance);
+    await dropDatabaseViaSql({
+      conn,
+      database: targetDb,
+      log: (level, msg) => this.ctx.log(level, msg, { itemId: item?.id ?? null }),
+    });
+  }
+
   /** Crea una BD vacía (databases.insert) y espera a que termine la operación. */
   async createEmptyDatabase(targetDb) {
     await this.ctx.log('info', `Creando la BD vacía ${targetDb}.`);
@@ -111,12 +137,15 @@ export class EngineAdapter {
    *     se haya pedido continuar sin conexión SQL.
    * Lanza si algo falla.
    */
-  async preflight(_items = []) {
+  async preflight(items = []) {
     await this.assertInstanceRunning();
     await this.waitInstanceIdle();
+    // Primero lo que exige la conexión (pre-scripts, borrado por SQL); luego lo opcional.
     if (this.preScripts.length) {
       await this.ensureSqlConnection(`${this.preScripts.length} pre-script(s)`, { required: true });
     }
+    const sqlDrops = items.filter((it) => it.drop_via_sql).length;
+    if (sqlDrops) await this.ensureSqlConnection(`el borrado por SQL de ${sqlDrops} BD`, { required: true });
     if (this.postScripts.length) await this.ensureSqlConnection(`${this.postScripts.length} post-script(s)`);
   }
 
@@ -128,6 +157,7 @@ export class EngineAdapter {
    * lanza siempre.
    */
   async ensureSqlConnection(purpose, { required = false } = {}) {
+    if (required && this.sqlUnavailable) throw new DomainError(`Sin conexión SQL para ${purpose}: ${this.sqlUnavailable}`, { code: 'SQL_REQUIRED' });
     if (this.sqlChecked || this.sqlUnavailable) return;
     await this.ctx.log('info', `Verificando la conexión SQL para ${purpose}.`);
     try {
