@@ -95,14 +95,14 @@ async function validateInstanceInput(input) {
   };
 }
 
-// Sin conexión SQL no se pueden ejecutar post-scripts: impedir quitarla si hay activos.
+// Sin conexión SQL no se pueden ejecutar scripts (pre/post): impedir quitarla si hay activos.
 async function assertCredentialsForActiveScripts(instanceId, data) {
   const missing = missingSqlCredentials({ db_host: data.dbHost, credential_ref: data.credentialRef });
   if (!missing.length) return;
   const active = await postScriptsRepo.listForInstance(instanceId, { onlyActive: true });
   if (active.length) {
     throw new ValidationError(
-      `La instancia tiene ${active.length} post-script(s) activo(s) que necesitan la conexión SQL; ` +
+      `La instancia tiene ${active.length} script(s) pre/post activo(s) que necesitan la conexión SQL; ` +
         'desactívalos antes de quitarla',
     );
   }

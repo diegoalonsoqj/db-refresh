@@ -4,7 +4,7 @@ import { useList } from '../hooks/useList.js';
 import Modal from '../components/Modal.jsx';
 
 // Credenciales SQL reutilizables: las usan las instancias (IP privada + credencial)
-// para ejecutar post-scripts. La contraseña nunca vuelve del servidor.
+// para ejecutar scripts pre/post. La contraseña nunca vuelve del servidor.
 const ENGINES = [
   { key: 'sqlserver', label: 'SQL Server' },
   { key: 'postgres', label: 'PostgreSQL' },
@@ -56,7 +56,7 @@ export default function CredentialsPage() {
       <h2>Credenciales SQL</h2>
       <p className="muted small">
         Usuario y contraseña con los que la app se conecta a las instancias (por IP privada) para ejecutar
-        post-scripts. Una credencial puede usarse en varias instancias del mismo motor. Las contraseñas se
+        scripts pre/post. Una credencial puede usarse en varias instancias del mismo motor. Las contraseñas se
         guardan cifradas y nunca se muestran.
       </p>
       {error && <div className="alert error">{error}</div>}

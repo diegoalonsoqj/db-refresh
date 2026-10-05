@@ -1,6 +1,6 @@
-// Ejecución de UN post-script con el cliente SQL del motor. La comparten el
-// worker (EngineAdapter.runPostScripts, tras un restore) y el botón "Ejecutar"
-// del modal de post-scripts (postScripts.service.runNow).
+// Ejecución de UN script SQL (pre o post-restore) con el cliente SQL del motor.
+// La comparten el worker (EngineAdapter.runPreScripts/runPostScripts) y el botón
+// "Ejecutar" del modal de scripts (postScripts.service.runNow).
 // Cada script abre su conexión (en su database_name) y corre sus lotes en
 // secuencia (`GO` separa lotes); PRINT / RAISE NOTICE y las tablas de los
 // SELECT van a `log`. Lanza en el primer lote que falle.
@@ -17,7 +17,8 @@ import { formatResultSet } from '../../lib/resultSets.js';
 export async function runPostScript({ runner, conn, script, log }) {
   const batches = splitSqlBatches(script.sql_text);
   const where = script.database_name ?? runner.defaultDatabase ?? 'BD por defecto';
-  await log('info', `Post-script "${script.name}" en ${where}: ${batches.length} lote(s).`);
+  const label = script.phase === 'pre' ? 'Pre-script' : 'Post-script';
+  await log('info', `${label} "${script.name}" en ${where}: ${batches.length} lote(s).`);
   try {
     await runner.withConnection(conn, script.database_name, async (handle) => {
       for (const [i, batch] of batches.entries()) {
@@ -33,7 +34,7 @@ export async function runPostScript({ runner, conn, script, log }) {
       }
     });
   } catch (err) {
-    throw new InfraError(`Post-script "${script.name}" falló: ${err.message}`, { code: 'POST_SCRIPT_FAILED', cause: err });
+    throw new InfraError(`${label} "${script.name}" falló: ${err.message}`, { code: 'POST_SCRIPT_FAILED', cause: err });
   }
-  await log('info', `Post-script "${script.name}" completado.`);
+  await log('info', `${label} "${script.name}" completado.`);
 }

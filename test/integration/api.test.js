@@ -180,8 +180,15 @@ test('post-scripts por instancia (admin): CRUD, validación, 409 y RBAC viewer 4
     assert.equal(upd.status, 200);
     assert.equal(upd.data.database_name, 'msdb');
 
+    assert.equal(created.data.phase, 'post'); // sin phase = post (compatibilidad)
+    const pre = await req('POST', base, { cookie, body: { name: 'cerrar-sesiones', phase: 'pre', sqlText: 'SELECT 1' } });
+    assert.equal(pre.status, 201);
+    assert.equal(pre.data.phase, 'pre');
+    assert.equal((await req('POST', base, { cookie, body: { name: 'z', phase: 'durante', sqlText: 'SELECT 1' } })).status, 422);
+
+    // Lista ambas fases: primero los pre-scripts.
     const list = await req('GET', base, { cookie });
-    assert.equal(list.data.length, 1);
+    assert.deepEqual(list.data.map((x) => x.phase), ['pre', 'post']);
 
     const viewer = await login(VIEWER, PW);
     assert.equal((await req('GET', base, { cookie: viewer.cookie })).status, 403);

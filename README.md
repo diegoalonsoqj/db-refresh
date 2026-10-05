@@ -10,8 +10,8 @@ Sistema web para **orquestar la restauración de backups en Cloud SQL de GCP**, 
 
 - **Restauración multi-motor** vía **Cloud SQL Admin API** (sin `gcloud` CLI): SQL Server (`.bak`), PostgreSQL / MySQL (dumps `.sql`/`.gz`).
 - **Flujo destructivo uniforme**: se elimina la BD destino antes de restaurar (en PG/MySQL se recrea vacía antes del import).
-- **Pre-check antes de borrar nada**: valida que existan todos los backups, espera a que la instancia no tenga operaciones en curso (backup automático, otro import) y prueba la conexión para post-scripts. Si falla, el job termina sin tocar ninguna BD.
-- **Post-scripts SQL por instancia** (SQL Server): se ejecutan en orden tras un job 100% OK (p. ej. `sp_start_job`), con lotes `GO` y los `PRINT` en el log del job.
+- **Pre-check antes de borrar nada**: valida que existan todos los backups, espera a que la instancia no tenga operaciones en curso (backup automático, otro import) y prueba la conexión para los scripts pre/post. Si falla, el job termina sin tocar ninguna BD.
+- **Scripts SQL por instancia, pre y post-restore** (SQL Server, PostgreSQL y MySQL): los **pre-scripts** se ejecutan una vez por job antes del primer DROP (p. ej. cerrar sesiones o parar jobs; si uno falla, el job se aborta sin borrar nada); los **post-scripts**, en orden tras un job 100% OK (p. ej. `sp_start_job`). Lotes `GO` y los `PRINT`/`RAISE NOTICE` en el log del job.
 - **Jobs asíncronos** en PostgreSQL (`FOR UPDATE SKIP LOCKED`) con un **worker** independiente y **progreso en vivo por SSE**.
 - **Programación in-app** (scheduler con `node-cron`), reemplaza el crontab del SO.
 - **Catálogo** de proyectos, instancias y buckets (N:N) administrable por UI/API.
@@ -174,8 +174,8 @@ clave:   P4$$w0rD
 
 ## Flujo de uso
 
-1. **Catálogo** (admin): crea *Proyecto* → *Instancia* (nombre de la instancia de Cloud SQL y motor) → *Bucket* (nombre + carpeta, p.ej. bucket `homologacion-bd-data`, prefijo `homologaciones`; también acepta pegar `gs://homologacion-bd-data/homologaciones`), y **vincula** el bucket a la instancia (marcándolo por defecto). Se listan los backups que están directamente en esa carpeta. Opcional: **Post-scripts** de la instancia (SQL a ejecutar tras restaurar, en SQL Server, PostgreSQL y MySQL); solo ellos necesitan la **conexión SQL** de la instancia: su **IP privada** y una **credencial** del módulo **Credenciales** (usuario + contraseña cifrada en la app o referencia a Secret Manager), con botón *Probar conexión*. El restore va por el Cloud SQL Admin API y no la usa.
-   - `secret_ref` es una **referencia** al password del usuario admin, nunca el password: `sm://projects/<p>/secrets/<s>[/versions/<v>]` (Secret Manager, leído con la SA de Ajustes, que necesita `Secret Manager Secret Accessor`) o `env:NOMBRE` (variable de entorno, para dev). Solo se usa para los post-scripts.
+1. **Catálogo** (admin): crea *Proyecto* → *Instancia* (nombre de la instancia de Cloud SQL y motor) → *Bucket* (nombre + carpeta, p.ej. bucket `homologacion-bd-data`, prefijo `homologaciones`; también acepta pegar `gs://homologacion-bd-data/homologaciones`), y **vincula** el bucket a la instancia (marcándolo por defecto). Se listan los backups que están directamente en esa carpeta. Opcional: **Scripts** de la instancia (SQL a ejecutar antes y/o después de restaurar, en SQL Server, PostgreSQL y MySQL); solo ellos necesitan la **conexión SQL** de la instancia: su **IP privada** y una **credencial** del módulo **Credenciales** (usuario + contraseña cifrada en la app o referencia a Secret Manager), con botón *Probar conexión*. El restore va por el Cloud SQL Admin API y no la usa.
+   - `secret_ref` es una **referencia** al password del usuario admin, nunca el password: `sm://projects/<p>/secrets/<s>[/versions/<v>]` (Secret Manager, leído con la SA de Ajustes, que necesita `Secret Manager Secret Accessor`) o `env:NOMBRE` (variable de entorno, para dev). Solo se usa para los scripts pre/post.
 2. **Lanzar restore** (operator/admin): elige instancia → bucket → *Listar backups* → mapea cada backup a su BD destino → **Restaurar**. Si la carpeta del bucket tiene subcarpetas, se navega por ellas (migas de pan) hasta la que contiene los backups. La BD destino se elige de la lista de BDs reales de la instancia (se marca *existe · se reemplaza*) o se escribe un nombre nuevo; no se permite restaurar sobre BDs de sistema. En **PostgreSQL** se puede elegir el **owner** (usuario de la instancia con el que se importa; los objetos quedan a su nombre). Las listas se leen con la service account por el Admin API, sin usuario/contraseña SQL. En instancias **PostgreSQL** se puede elegir el **método**: *Import de Cloud SQL* o *Restore nativo* (`pg_restore` para dumps `.tar` de `pg_dump -Ft`, `psql` para `.sql`/`.sql.gz`), que permite restaurar la **BD completa** o **solo un esquema** (se elimina con `DROP SCHEMA … CASCADE` y se restaura; con `.tar` se pueden leer los esquemas del dump). El restore nativo necesita la conexión SQL de la instancia y `postgresql-client` en el servidor. En **SQL Server** cada BD tiene la opción **«Usuarios huérfanos»**: tras restaurarla, remapea sus usuarios al login del mismo nombre, reporta los que no tienen login y, si se elige, asigna el owner de la BD (necesita la conexión SQL de la instancia).
 3. **Progreso en vivo**: el detalle del job muestra el estado por BD y el **log en tiempo real (SSE)**.
 4. **Historial**: lista de jobs con su estado.
@@ -202,7 +202,7 @@ Base: `/api`. Todo salvo `health`, `auth/methods`, `auth/login` requiere sesión
 | Backups / Restores | `GET backups`, `GET/POST restores`, `GET restores/:id`, `GET restores/:id/events` (SSE) |
 | Settings (admin) | `GET/PUT settings/ad`, `POST settings/ad/test`, `GET/PUT settings/gcp`, `POST settings/gcp/test` |
 | Catálogo | `projects`, `instances` (+ `instances/:id/buckets`), `buckets` (lecturas: autenticado; escrituras: admin) |
-| Post-scripts | `instances/:id/post-scripts` (+ `/:scriptId`) — CRUD, **solo admin** (también lectura: es SQL arbitrario) |
+| Scripts pre/post | `instances/:id/post-scripts` (+ `/:scriptId`, `/:scriptId/run`) — CRUD con `phase: 'pre' \| 'post'` (por defecto `post`), **solo admin** (también lectura: es SQL arbitrario) |
 | Schedules (operator+) | `GET/POST schedules`, `GET/PUT/DELETE schedules/:id`, `POST schedules/:id/run` |
 
 ## Tests
@@ -241,5 +241,4 @@ Backend y frontend **funcionalmente completos**, con hardening y tests (unitario
 
 - **Prueba E2E de un job real contra Cloud SQL** (el camino GCP de los adaptadores no se ha ejercitado contra infraestructura real).
 - **Login AD contra un directorio real** (cableado verificado, no probado contra un AD vivo).
-- **Post-scripts en PostgreSQL/MySQL** (hoy un job con scripts activos en esos motores falla en el pre-check, sin borrar nada).
 - Menores: cálculo de `next_run_at`, revocación de sesión (denylist de JWT).

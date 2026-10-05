@@ -9,11 +9,12 @@ import { resolveSqlConnection } from './sql/connection.js';
 
 /**
  * Contrato que todo adaptador de motor debe cumplir.
- * `ctx` es el contexto de restauración: { instance, project, bucketPath, log, postScripts }
+ * `ctx` es el contexto de restauración: { instance, project, bucketPath, log, preScripts, postScripts }
  *   - instance:    fila de gcp_instances (con project_id, db_host, db_port, credential_ref...)
  *   - project:     project_id de GCP
  *   - log:         (level, message, {itemId}) => Promise  para emitir eventos de progreso
- *   - postScripts: filas activas de instance_post_scripts, en orden de ejecución
+ *   - preScripts:  filas activas de instance_post_scripts (phase 'pre'), en orden de ejecución
+ *   - postScripts: ídem (phase 'post')
  */
 export class EngineAdapter {
   constructor(ctx) {
@@ -93,6 +94,10 @@ export class EngineAdapter {
     }
   }
 
+  get preScripts() {
+    return this.ctx.preScripts ?? [];
+  }
+
   get postScripts() {
     return this.ctx.postScripts ?? [];
   }
@@ -100,13 +105,18 @@ export class EngineAdapter {
   /**
    * Pre-check antes de tocar nada (se llama una vez, antes del primer DROP):
    *  1) la instancia no tiene operaciones en curso (espera hasta un timeout);
-   *  2) si hay post-scripts, que se pueda conectar para ejecutarlos. Fallar aquí
-   *     es barato; descubrirlo tras el restore deja el job a medias.
+   *  2) si hay pre/post-scripts, que se pueda conectar para ejecutarlos. Fallar aquí
+   *     es barato; descubrirlo tras el restore deja el job a medias. Los pre-scripts
+   *     exigen la conexión siempre (preparan algo que el restore necesita), aunque
+   *     se haya pedido continuar sin conexión SQL.
    * Lanza si algo falla.
    */
   async preflight(_items = []) {
     await this.assertInstanceRunning();
     await this.waitInstanceIdle();
+    if (this.preScripts.length) {
+      await this.ensureSqlConnection(`${this.preScripts.length} pre-script(s)`, { required: true });
+    }
     if (this.postScripts.length) await this.ensureSqlConnection(`${this.postScripts.length} post-script(s)`);
   }
 
@@ -114,9 +124,10 @@ export class EngineAdapter {
    * Verifica (una vez por job) la conexión SQL que necesitan los post-scripts y la
    * corrección de huérfanos. Si falla: sin la opción `skipSqlOnFailure` lanza (el
    * pre-check aborta sin tocar nada); con ella deja `sqlUnavailable` con el motivo
-   * y el job restaura igualmente, omitiendo esos pasos.
+   * y el job restaura igualmente, omitiendo esos pasos. Con `required` (pre-scripts)
+   * lanza siempre.
    */
-  async ensureSqlConnection(purpose) {
+  async ensureSqlConnection(purpose, { required = false } = {}) {
     if (this.sqlChecked || this.sqlUnavailable) return;
     await this.ctx.log('info', `Verificando la conexión SQL para ${purpose}.`);
     try {
@@ -124,7 +135,7 @@ export class EngineAdapter {
       this.sqlChecked = true;
       await this.ctx.log('info', 'Conexión SQL verificada.');
     } catch (err) {
-      if (!this.ctx.skipSqlOnFailure) throw err;
+      if (required || !this.ctx.skipSqlOnFailure) throw err;
       this.sqlUnavailable = err.message;
       await this.ctx.log('warning',
         `No hay conexión SQL (${err.message}). Se restaurará igualmente, como se pidió al lanzar; ` +
@@ -180,7 +191,7 @@ export class EngineAdapter {
   _requireRunner() {
     if (!this.sqlRunner) {
       throw new DomainError(
-        `Post-scripts no soportados para el motor de ${this.ctx.instance.instance_name}`,
+        `Scripts SQL no soportados para el motor de ${this.ctx.instance.instance_name}`,
         { code: 'POST_SCRIPTS_UNSUPPORTED' },
       );
     }
@@ -206,10 +217,22 @@ export class EngineAdapter {
    * un script posterior puede depender del anterior y el job queda en failed.
    */
   async runPostScripts() {
-    if (!this.postScripts.length) return;
+    await this._runScripts(this.postScripts);
+  }
+
+  /**
+   * Ejecuta los pre-scripts activos en orden, una vez por job, tras el pre-check y
+   * antes del primer DROP. El primer fallo detiene el resto y aborta el job.
+   */
+  async runPreScripts() {
+    await this._runScripts(this.preScripts);
+  }
+
+  async _runScripts(scripts) {
+    if (!scripts.length) return;
     const runner = this._requireRunner();
     const conn = await resolveSqlConnection(this.ctx.instance);
-    for (const script of this.postScripts) {
+    for (const script of scripts) {
       await runPostScript({ runner, conn, script, log: (level, msg) => this.ctx.log(level, msg) });
     }
   }

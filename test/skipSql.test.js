@@ -33,6 +33,13 @@ test('ensureSqlConnection: con la opción, sigue y marca la conexión como no di
   assert.equal(c.logs.filter(([lvl]) => lvl === 'warning').length, 1);
 });
 
+test('ensureSqlConnection: los pre-scripts exigen la conexión aunque se pidiera continuar sin ella', async () => {
+  const c = ctx(true);
+  const ad = new SqlServerAdapter(c);
+  await assert.rejects(ad.ensureSqlConnection('1 pre-script(s)', { required: true }), DomainError);
+  assert.equal(ad.sqlUnavailable, undefined);
+});
+
 test('withReason: no repite el motivo si el mensaje ya lo incluye', () => {
   const msg = 'No se pudo conectar a SQL Server 10.49.34.24:1433: Failed to connect to 10.49.34.24:1433 in 15000ms';
   assert.equal(withReason(msg, 'Failed to connect to 10.49.34.24:1433 in 15000ms'), msg);
