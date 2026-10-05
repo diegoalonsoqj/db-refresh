@@ -69,6 +69,7 @@ a { color: var(--primary); text-decoration: none; }
 .app.collapsed .sidebar-head { justify-content: center; padding: .85rem .6rem; }
 
 .brand { display: flex; align-items: center; gap: .5rem; font-weight: 700; white-space: nowrap; }
+.brand-logo { flex: 0 0 auto; display: block; }
 
 /* Toggle circular montado a caballo del borde derecho del sidebar: la mitad
    sobresale sobre el contenido (por eso el sidebar es overflow:visible). */
