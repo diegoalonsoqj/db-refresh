@@ -84,6 +84,7 @@ export default function JobDetailPage() {
               <td className="mono">
                 {it.target_db}
                 {it.scope === 'schema' && <span className="muted small"> · esquema {it.schema_name}</span>}
+                {it.drop_via_sql && <span className="muted small"> · borrado por SQL</span>}
                 {it.fix_orphans && (
                   <span className="muted small"> · corrige usuarios huérfanos{it.orphan_db_owner ? ` (owner ${it.orphan_db_owner})` : ''}</span>
                 )}

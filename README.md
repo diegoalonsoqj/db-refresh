@@ -9,7 +9,8 @@ Sistema web para **orquestar la restauración de backups en Cloud SQL de GCP**, 
 ## Características
 
 - **Restauración multi-motor** vía **Cloud SQL Admin API** (sin `gcloud` CLI): SQL Server (`.bak`), PostgreSQL / MySQL (dumps `.sql`/`.gz`).
-- **Flujo destructivo uniforme**: se elimina la BD destino antes de restaurar (en PG/MySQL se recrea vacía antes del import).
+- **Flujo destructivo uniforme**: se elimina la BD destino antes de restaurar (en PG/MySQL se recrea vacía antes del import). Solo se tocan las BD incluidas en el restore.
+- **Borrar por SQL** (PostgreSQL, opción por BD): borra la BD existente con `DROP DATABASE … WITH (FORCE)` y la credencial de la instancia en lugar del Admin API. Necesario cuando su owner no es `cloudsqlsuperuser` (p. ej. BD creadas por otra herramienta con su propio usuario), porque el Admin API no puede borrarlas.
 - **Pre-check antes de borrar nada**: valida que existan todos los backups, espera a que la instancia no tenga operaciones en curso (backup automático, otro import) y prueba la conexión para los scripts pre/post. Si falla, el job termina sin tocar ninguna BD.
 - **Scripts SQL por instancia, pre y post-restore** (SQL Server, PostgreSQL y MySQL): los **pre-scripts** se ejecutan una vez por job antes del primer DROP (p. ej. cerrar sesiones o parar jobs; si uno falla, el job se aborta sin borrar nada); los **post-scripts**, en orden tras un job 100% OK (p. ej. `sp_start_job`). Lotes `GO` y los `PRINT`/`RAISE NOTICE` en el log del job.
 - **Jobs asíncronos** en PostgreSQL (`FOR UPDATE SKIP LOCKED`) con un **worker** independiente y **progreso en vivo por SSE**.

@@ -32,6 +32,7 @@ export async function launchRestore(req) {
   // exigen la conexión de la instancia.
   if (missingSqlCredentials(instance).length) {
     const why = method === 'native' ? 'El restore nativo'
+      : items.some((it) => it.dropViaSql) ? 'El borrado de BD por SQL'
       : items.some((it) => it.fixOrphans) && !skipSqlOnFailure ? 'La corrección de usuarios huérfanos' : null;
     if (why) {
       throw new ValidationError(

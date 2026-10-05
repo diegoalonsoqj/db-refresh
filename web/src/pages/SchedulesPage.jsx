@@ -42,10 +42,11 @@ export default function SchedulesPage() {
     e.preventDefault(); setBusy(true); setFormErr(null);
     const mapping = form.mapping
       .filter((m) => m.backupFile && m.targetDb)
-      .map(({ importUser, fixOrphans, ...m }) => ({
+      .map(({ importUser, fixOrphans, dropViaSql, ...m }) => ({
         ...m,
         ...(isPg && importUser ? { importUser } : {}),
         ...(isMssql && fixOrphans ? { fixOrphans: true } : {}),
+        ...(isPg && dropViaSql ? { dropViaSql: true } : {}),
       }));
     const body = { ...form, mapping };
     try {
@@ -133,6 +134,12 @@ export default function SchedulesPage() {
                   )}
                   {isPg && (
                     <input className="mono" style={{ flex: 1 }} placeholder="owner (opc.)" title="Usuario con el que se importa (PostgreSQL)" value={m.importUser ?? ''} onChange={(e) => setMap(idx, 'importUser', e.target.value)} />
+                  )}
+                  {isPg && (
+                    <label className="checkline small" title="Borra la BD existente por SQL con la credencial de la instancia (para BD cuyo owner no es cloudsqlsuperuser). Requiere la conexión SQL de la instancia">
+                      <input type="checkbox" checked={!!m.dropViaSql} onChange={(e) => setMap(idx, 'dropViaSql', e.target.checked)} />
+                      Borrar por SQL
+                    </label>
                   )}
                   <button type="button" className="btn ghost small icon-btn" onClick={() => delMap(idx)} disabled={form.mapping.length === 1} aria-label="Quitar fila"><IconClose /></button>
                 </div>

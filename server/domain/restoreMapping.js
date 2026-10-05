@@ -46,11 +46,11 @@ export function nativeDumpFormat(fileName) {
 export const NATIVE_EXTENSIONS = ['.tar', '.sql', '.gz'];
 
 /**
- * Valida y normaliza el mapping [{ backupFile, targetDb, importUser?, scope?, schemaName? }].
+ * Valida y normaliza el mapping [{ backupFile, targetDb, importUser?, scope?, schemaName?, fixOrphans?, dbOwner?, dropViaSql? }].
  * @param engine  motor de la instancia
  * @param mapping filas del formulario / programada
  * @param method  'import' | 'native'
- * @returns [{ backupFile, targetDb, importUser|null, scope, schemaName|null }]
+ * @returns [{ backupFile, targetDb, importUser|null, scope, schemaName|null, fixOrphans, dbOwner|null, dropViaSql }]
  */
 export function validateMapping(engine, mapping, method = 'import') {
   if (!METHODS.includes(method)) throw new ValidationError(`Método de restore inválido: ${method}`);
@@ -114,7 +114,18 @@ export function validateMapping(engine, mapping, method = 'import') {
       dbOwner = String(m?.dbOwner ?? '').trim() || null;
       if (dbOwner && !SAFE_LOGIN.test(dbOwner)) throw new ValidationError(`Login owner inválido: ${dbOwner}`);
     }
-    return { backupFile, targetDb, importUser, scope, schemaName, fixOrphans, dbOwner };
+    // Borrar la BD destino por SQL (con la credencial) en vez del Admin API: solo
+    // PostgreSQL y BD completa (por esquema no se borra la BD).
+    const dropViaSql = m?.dropViaSql === true;
+    if (dropViaSql) {
+      if (engine !== 'postgres') {
+        throw new ValidationError(`El borrado por SQL solo aplica a PostgreSQL, no a ${engine}`);
+      }
+      if (scope !== 'database') {
+        throw new ValidationError(`El borrado por SQL no aplica al restore por esquema (${targetDb}.${schemaName}): la BD no se borra`);
+      }
+    }
+    return { backupFile, targetDb, importUser, scope, schemaName, fixOrphans, dbOwner, dropViaSql };
   });
 
   // Restaurar la BD completa y además un esquema de esa misma BD en el mismo job es contradictorio.
