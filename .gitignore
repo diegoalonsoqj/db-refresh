@@ -29,3 +29,8 @@ coverage/
 
 # PM2
 logs/
+
+# Notas locales de desarrollo (no versionar)
+CLAUDE.md
+prompt-claude-code-restore-backups.md
+.claude/
