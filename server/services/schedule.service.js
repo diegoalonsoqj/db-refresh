@@ -25,9 +25,12 @@ async function validateInput(input) {
 
   // [{ backupFile, targetDb, importUser, ... }]: se revalida al disparar (launchRestore).
   const mapping = validateMapping(instance.engine, input.mapping);
-  if (mapping.some((m) => m.dropViaSql) && missingSqlCredentials(instance).length) {
+  // Borrar por SQL y asignar el owner de la BD (PostgreSQL) se hacen por SQL.
+  const sqlNeed = mapping.some((m) => m.dropViaSql) ? 'El borrado de BD por SQL'
+    : mapping.some((m) => m.importUser) ? 'Asignar el owner de la BD (import en PostgreSQL)' : null;
+  if (sqlNeed && missingSqlCredentials(instance).length) {
     throw new ValidationError(
-      'El borrado de BD por SQL necesita la conexión SQL de la instancia (IP privada + credencial): configúrala en Catálogo → Instancias',
+      `${sqlNeed} necesita la conexión SQL de la instancia (IP privada + credencial): configúrala en Catálogo → Instancias`,
     );
   }
 

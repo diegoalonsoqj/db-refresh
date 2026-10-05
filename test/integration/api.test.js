@@ -294,6 +294,13 @@ test('restore: validación de owner/BD de sistema y RBAC de BDs/usuarios en vivo
         assert.equal(r.status, 422);
         assert.match(r.data.error?.message ?? JSON.stringify(r.data), /borrado de BD por SQL/);
       }
+      // Owner elegido con el método import: se asigna por SQL (ALTER DATABASE ... OWNER).
+      const owned = await req('POST', '/restores', {
+        cookie,
+        body: { instanceId: pgInst.data.id, bucketPath: 'gs://itest-b/x', mapping: [{ backupFile: 'd.sql.gz', targetDb: 'PaynovaBD', importUser: 'UserPaynova' }] },
+      });
+      assert.equal(owned.status, 422);
+      assert.match(JSON.stringify(owned.data), /owner de la BD/);
     } finally {
       await req('DELETE', `/instances/${pgInst.data.id}`, { cookie });
     }

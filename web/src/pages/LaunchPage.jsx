@@ -342,7 +342,7 @@ export default function LaunchPage() {
               Selecciona backups y elige la BD destino: una existente de la instancia (se elimina y se reemplaza) o
               «Nueva BD» para escribir el nombre.
               {native && ' Con alcance «Esquema» solo se reemplaza ese esquema dentro de una BD existente.'}
-              {owners.supported && ' El owner es el rol con el que se restaura: los objetos quedan a su nombre.'}
+              {owners.supported && ' El owner es el rol con el que se restaura: los objetos y la BD quedan a su nombre (se asigna por SQL; requiere la conexión SQL de la instancia). Para volver a reemplazar una BD con owner propio, marca «Borrar por SQL».'}
               {isPg && ' «Borrar por SQL»: borra la BD existente con la credencial de la instancia en vez del API de GCP; márcalo si su owner no es cloudsqlsuperuser (el API no puede borrarla).'}
               {orphansOn && orphansReady && ' «Corregir huérfanos»: tras restaurar la BD, remapea sus usuarios al login del mismo nombre (los que no tengan login se reportan) y, si se elige, asigna el owner de la BD.'}
             </div>
@@ -444,7 +444,9 @@ export default function LaunchPage() {
                       {owners.supported && (
                         <td>
                           {r && (
-                            <select value={r.importUser} onChange={(e) => setRow(f.fileName, 'importUser', e.target.value)}>
+                            <select value={r.importUser} onChange={(e) => setRow(f.fileName, 'importUser', e.target.value)}
+                              disabled={!nativeReady && !r.importUser}
+                              title={nativeReady ? undefined : 'Asignar owner requiere la conexión SQL de la instancia (IP privada + credencial)'}>
                               <option value="">{native ? '(usuario de la credencial)' : '(por defecto de Cloud SQL)'}</option>
                               {owners.users.map((u) => (
                                 <option key={u.name} value={u.name}>

@@ -5,6 +5,7 @@ import { validateMapping, isSystemDatabase, supportsImportUser } from '../server
 import { buildImportContext, describeGcpError, instanceRunState } from '../server/gcp/cloudsql.client.js';
 import { ValidationError } from '../server/domain/errors.js';
 import { buildDropStatements } from '../server/engines/postgres/dropViaSql.js';
+import { buildOwnerStatements } from '../server/engines/postgres/dbOwner.js';
 
 test('validateMapping: normaliza y deja importUser en null si no viene', () => {
   assert.deepEqual(validateMapping('sqlserver', [{ backupFile: ' a.bak ', targetDb: 'ventas' }]),
@@ -87,4 +88,12 @@ test('buildDropStatements: GRANT si no es miembro, FORCE en PG13+, terminate ant
   assert.deepEqual(pg12.map((s) => s.kind), ['terminate', 'drop']);
   assert.match(pg12[0].sql, /datname = 'o''db'/);
   assert.equal(pg12[1].sql, `DROP DATABASE IF EXISTS "o'db"`);
+});
+
+test('buildOwnerStatements: GRANT solo si la credencial no es miembro del rol', () => {
+  assert.deepEqual(
+    buildOwnerStatements({ database: 'PaynovaBD', role: 'UserPaynova', isMember: false }).map((s) => s.sql),
+    ['GRANT "UserPaynova" TO CURRENT_USER', 'ALTER DATABASE "PaynovaBD" OWNER TO "UserPaynova"'],
+  );
+  assert.deepEqual(buildOwnerStatements({ database: 'app', role: 'app_owner', isMember: true }).map((s) => s.kind), ['alter']);
 });
