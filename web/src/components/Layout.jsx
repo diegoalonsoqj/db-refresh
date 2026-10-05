@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthContext.jsx';
 import ChangePasswordModal from './ChangePasswordModal.jsx';
 import {
   IconHistory, IconLaunch, IconSchedule, IconCatalog, IconUsers,
-  IconAudit, IconSettings, IconServer, IconKey, IconLogout,
+  IconAudit, IconSettings, IconKey, IconLogout, BrandLogo,
   IconChevronLeft, IconChevronDown, IconLock,
 } from './icons.jsx';
 
@@ -135,7 +135,7 @@ export default function Layout() {
       <aside className="sidebar">
         <div className="sidebar-head">
           <div className="brand">
-            <span className="nav-icon"><IconServer /></span>
+            <BrandLogo />
             <span className="brand-text">db-refresh</span>
           </div>
         </div>
