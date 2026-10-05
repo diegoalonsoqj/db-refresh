@@ -1,6 +1,6 @@
 // Ejecuta un job de restauración completo. Orquesta el adaptador de motor,
 // persiste estado/eventos y publica progreso. Reproduce el flujo de
-// restore_to_csql.py: pre-check -> validar -> drop -> import (por item) -> post-scripts.
+// restore_to_csql.py: pre-check -> pre-scripts -> validar -> drop -> import (por item) -> post-scripts.
 import * as jobsRepo from '../data/repositories/jobs.repo.js';
 import * as catalogRepo from '../data/repositories/catalog.repo.js';
 import { listActiveForInstance } from '../services/postScripts.service.js';
@@ -38,7 +38,8 @@ export async function runJob(job, logger) {
     project: instance.project_id,
     bucketPath: job.bucket_path,
     log,
-    postScripts: await listActiveForInstance(instance.id),
+    preScripts: await listActiveForInstance(instance.id, 'pre'),
+    postScripts: await listActiveForInstance(instance.id, 'post'),
     skipSqlOnFailure: job.skip_sql_on_failure === true,
     reportOperation: (itemId, operation) =>
       jobsRepo.updateItemStatus(itemId, 'importing', { gcpOperation: operation }),
@@ -57,27 +58,43 @@ export async function runJob(job, logger) {
   const methodLabel = job.method === 'native' ? 'restore nativo (pg_restore/psql)' : 'import de Cloud SQL';
   await log('info', `Inicio de la restauración: ${items.length} BD, ${methodLabel}.`);
 
+  // Aborta el job antes del primer DROP: todos los items quedan como fallidos.
+  const abortBeforeRestore = async (stage, err, detail) => {
+    const message = withReason(err.message, describeGcpError(err.cause));
+    logger?.error({ err, jobId: job.id }, `${stage} fallido`);
+    await log('error', `${stage} fallido; ${detail}: ${message}`);
+    for (const item of items) {
+      await jobsRepo.updateItemStatus(item.id, 'failed', {
+        errorMessage: `${stage}: ${message}`,
+        markFinished: true,
+      });
+    }
+    await jobsRepo.finishJob(job.id, 'failed', `${stage}: ${message}`);
+    await log('info', 'Proceso finalizado.');
+  };
+
   // 0) Pre-check: todos los backups existen + instancia libre + conexión para
-  //    post-scripts. Si falla, el job termina sin haber borrado nada (todos los
+  //    pre/post-scripts. Si falla, el job termina sin haber borrado nada (todos los
   //    items quedan como fallidos), como hacía el script original.
   try {
     for (const item of items) await adapter.validateBackup(item.backup_file);
     await log('info', `Pre-check: ${items.length} backup(s) validados en GCS.`);
     await adapter.preflight(items);
   } catch (err) {
-    const reason = describeGcpError(err.cause);
-    const message = withReason(err.message, reason);
-    logger?.error({ err, jobId: job.id }, 'Pre-check fallido');
-    await log('error', `Pre-check fallido; no se ha modificado ninguna BD: ${message}`);
-    for (const item of items) {
-      await jobsRepo.updateItemStatus(item.id, 'failed', {
-        errorMessage: `Pre-check: ${message}`,
-        markFinished: true,
-      });
-    }
-    await jobsRepo.finishJob(job.id, 'failed', `Pre-check: ${message}`);
-    await log('info', 'Proceso finalizado.');
+    await abortBeforeRestore('Pre-check', err, 'no se ha modificado ninguna BD');
     return;
+  }
+
+  // 0b) Pre-scripts: una vez por job, antes del primer DROP. Si uno falla, el
+  //     resto no se ejecuta y el job se aborta sin borrar ni restaurar ninguna BD.
+  if (adapter.preScripts.length) {
+    try {
+      await log('info', `Ejecutando ${adapter.preScripts.length} pre-script(s).`);
+      await adapter.runPreScripts();
+    } catch (err) {
+      await abortBeforeRestore('Pre-scripts', err, 'no se ha borrado ni restaurado ninguna BD');
+      return;
+    }
   }
 
   let allOk = true;

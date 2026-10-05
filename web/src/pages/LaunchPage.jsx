@@ -484,7 +484,7 @@ export default function LaunchPage() {
         {!native && rows.length > 0 && (
           <label className="checkline small" title="Si la app no llega por SQL a la instancia, restaura igualmente y omite esos pasos (el job queda «OK con avisos»)">
             <input type="checkbox" checked={skipSql} onChange={(e) => setSkipSql(e.target.checked)} />
-            Continuar aunque falle la conexión SQL (se omiten los post-scripts y la corrección de usuarios huérfanos)
+            Continuar aunque falle la conexión SQL (se omiten los post-scripts y la corrección de usuarios huérfanos; los pre-scripts la exigen siempre)
           </label>
         )}
 

@@ -4,7 +4,7 @@ import { api } from '../../api/client.js';
 import { useList } from '../../hooks/useList.js';
 import Modal from '../../components/Modal.jsx';
 import LinkBucketsModal from './LinkBucketsModal.jsx';
-import PostScriptsModal from './PostScriptsModal.jsx';
+import ScriptsModal from './ScriptsModal.jsx';
 
 const ENGINES = ['sqlserver', 'postgres', 'mysql'];
 const DEFAULT_PORTS = { sqlserver: 1433, postgres: 5432, mysql: 3306 };
@@ -103,7 +103,7 @@ export default function InstancesPanel({ projects, buckets }) {
                     <div className="muted">{i.credential_name} ({i.credential_username})</div>
                   </>
                 ) : (
-                  <span className="muted" title="Sin conexión SQL: solo restore, sin post-scripts">
+                  <span className="muted" title="Sin conexión SQL: solo restore, sin scripts pre/post">
                     {i.db_host ? `${i.db_host} · sin credencial` : 'No configurada'}
                   </span>
                 )}
@@ -114,7 +114,7 @@ export default function InstancesPanel({ projects, buckets }) {
               <td className="actions">
                 <button className="btn ghost small" onClick={() => testRow(i)} disabled={!i.db_host || !i.credential_ref}>Probar conexión</button>
                 <button className="btn ghost small" onClick={() => setLinkFor(i)}>Buckets</button>
-                <button className="btn ghost small" onClick={() => setScriptsFor(i)}>Post-scripts</button>
+                <button className="btn ghost small" onClick={() => setScriptsFor(i)}>Scripts</button>
                 <button className="btn ghost small" onClick={() => openEdit(i)}>Editar</button>
                 <button className="btn ghost small" onClick={() => remove(i)}>Eliminar</button>
               </td>
@@ -138,9 +138,9 @@ export default function InstancesPanel({ projects, buckets }) {
               </select>
             </label>
             <div className="muted small">
-              <strong>Conexión SQL — solo para post-scripts (opcional).</strong> El restore (drop + import del
+              <strong>Conexión SQL — solo para scripts pre/post (opcional).</strong> El restore (drop + import del
               backup) usa el Cloud SQL Admin API con la service account de Ajustes y no la necesita. Indica la IP
-              privada y la credencial; sin credencial la instancia no ejecuta post-scripts.
+              privada y la credencial; sin credencial la instancia no ejecuta scripts pre/post.
             </div>
             <div className="row gap" style={{ alignItems: 'flex-start' }}>
               <label style={{ flex: 2 }}>Host (IP privada)<input className="mono" value={form.dbHost} onChange={set('dbHost')} placeholder="10.x.x.x" /></label>
@@ -171,7 +171,7 @@ export default function InstancesPanel({ projects, buckets }) {
         </Modal>
       )}
 
-      {scriptsFor && <PostScriptsModal instance={scriptsFor} onClose={() => setScriptsFor(null)} />}
+      {scriptsFor && <ScriptsModal instance={scriptsFor} onClose={() => setScriptsFor(null)} />}
       {linkFor && <LinkBucketsModal instance={linkFor} allBuckets={buckets} onClose={() => setLinkFor(null)} />}
     </div>
   );

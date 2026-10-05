@@ -144,6 +144,13 @@ CREATE TABLE IF NOT EXISTS instance_post_scripts (
   UNIQUE (instance_ref, name)
 );
 CREATE INDEX IF NOT EXISTS idx_post_scripts_instance ON instance_post_scripts (instance_ref, sort_order);
+-- Migración idempotente: fase del script. 'pre' = una vez por job, antes del primer
+-- DROP (si falla, el job se aborta sin borrar nada); 'post' = al final, si todo OK.
+ALTER TABLE instance_post_scripts ADD COLUMN IF NOT EXISTS phase text NOT NULL DEFAULT 'post';
+DO $$ BEGIN
+  ALTER TABLE instance_post_scripts DROP CONSTRAINT IF EXISTS chk_script_phase;
+  ALTER TABLE instance_post_scripts ADD CONSTRAINT chk_script_phase CHECK (phase IN ('pre', 'post'));
+END $$;
 
 -- --- Usuarios / auth -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS app_users (

@@ -71,6 +71,15 @@ test('EngineAdapter: post-scripts en motor sin soporte fallan; sin scripts es no
   await assert.rejects(new EngineAdapter(ctx).runPostScripts(), DomainError);
 });
 
+test('EngineAdapter: pre-scripts separados de los post; sin scripts es no-op', async () => {
+  const ctx = { instance: { instance_name: 'i1' }, postScripts: [{ name: 'p', sql_text: 'SELECT 1' }] };
+  const ad = new EngineAdapter(ctx);
+  assert.deepEqual(ad.preScripts, []);
+  await ad.runPreScripts(); // no-op: los post no se ejecutan como pre
+  ctx.preScripts = [{ name: 'pre', phase: 'pre', sql_text: 'SELECT 1' }];
+  await assert.rejects(new EngineAdapter(ctx).runPreScripts(), DomainError);
+});
+
 test('missingSqlCredentials: host + credencial', () => {
   assert.deepEqual(missingSqlCredentials({ db_host: 'h', credential_ref: 'c' }), []);
   assert.deepEqual(missingSqlCredentials({ db_host: 'h' }), ['credential_ref']);
