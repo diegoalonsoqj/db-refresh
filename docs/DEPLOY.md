@@ -21,11 +21,12 @@ node -v                                              # debe mostrar v24.x
 # PM2 global
 sudo npm install -g pm2
 
-# Cliente de PostgreSQL 17 (pg_restore / psql) para el restore nativo
+# Cliente de PostgreSQL (pg_restore / psql) para el restore nativo: la MISMA versión
+# mayor que el pg_dump que genera los dumps, o superior (dumps de pg_dump 18 -> cliente 18)
 sudo apt-get install -y postgresql-common
 sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
-sudo apt-get install -y postgresql-client-17
-pg_restore --version    # 17.x (debe ser >= la versión del pg_dump que generó los dumps)
+sudo apt-get install -y postgresql-client-18
+pg_restore --version    # 18.x
 ```
 
 ## 2. PostgreSQL 17
@@ -138,11 +139,26 @@ sudo ufw status
 
 Si el proveedor tiene firewall en su panel (security group), aplica la misma regla allí. Sin HTTPS el puerto **no** debe quedar abierto a todo internet.
 
-## 7b. Red hacia las instancias (scripts pre/post)
+## 7b. Red hacia las instancias (conexión SQL)
 
-Los scripts pre/post se ejecutan conectándose por SQL a la **IP privada** de la instancia con una credencial del módulo **Credenciales**. Desde el VPS deben estar accesibles los puertos de las instancias que los usen (SQL Server 1433, PostgreSQL 5432, MySQL 3306). Compruébalo con *Probar conexión* en Catálogo → Instancias.
+El restore por import va por el Cloud SQL Admin API y no necesita conexión SQL. Estas funciones sí se conectan por SQL a la **IP privada** de la instancia con una credencial del módulo **Credenciales**:
+
+- Scripts **pre y post-restore** (los 3 motores).
+- **Corrección de usuarios huérfanos** (SQL Server).
+- **«Borrar por SQL»** y **owner elegido con el método import** (PostgreSQL).
+- **Restore nativo** (PostgreSQL).
+
+Desde el VPS deben estar accesibles los puertos de las instancias que las usen (SQL Server 1433, PostgreSQL 5432, MySQL 3306). Compruébalo con *Probar conexión* en Catálogo → Instancias.
+
+**Credencial PostgreSQL** para «Borrar por SQL» y owner con import: debe ser miembro de `cloudsqlsuperuser` (los usuarios creados desde la consola de Cloud SQL lo son) y poder actuar como el owner de la BD. Si no es miembro del rol owner (p. ej. `UserPaynova`), la app ejecuta `GRANT "<owner>" TO CURRENT_USER`; en PostgreSQL 16+ eso solo funciona si la credencial tiene `ADMIN` sobre ese rol. Si falla, el job lo indica: usa como credencial el propio owner o concédele el rol una vez a mano.
 
 El **restore nativo de PostgreSQL** (`pg_restore`/`psql`) usa la misma conexión: necesita el 5432 de la IP privada y una credencial con permisos para crear BDs y esquemas (`postgres` o miembro de `cloudsqlsuperuser`). Los dumps se generan con `pg_dump -Ft` (tar) o en plano (`.sql`/`.sql.gz`, mejor con `--no-owner --no-privileges`); para restaurar un solo esquema desde un `.sql`, el dump debe haberse generado con `pg_dump -n <esquema>`.
+
+### Compatibilidad de los dumps PostgreSQL
+
+Un dump en SQL plano solo se garantiza en servidores de **la misma versión que el `pg_dump` que lo generó, o más nuevos**. `pg_dump` 17/18 escribe `SET transaction_timeout = 0;` al inicio del dump, y una instancia **PostgreSQL 16** rechaza esa línea, de modo que el import se detiene (`unrecognized configuration parameter "transaction_timeout"`). Genera los dumps con un `pg_dump` de la versión de la instancia destino o inferior, o quita esa línea de la cabecera del dump.
+
+Los dumps sin `--clean` (sin `DROP`) necesitan una BD vacía: la app siempre borra y recrea la BD destino antes de importar.
 
 ## 8. Verificar
 
@@ -225,6 +241,10 @@ Si la columna de reinicios (`↺`) de `pm2 ls` sube sola, algún proceso está l
 | Login bloqueado con 429 | Rate-limit: 10 intentos fallidos por IP en 15 min. Esperar o reiniciar la API |
 | `/api/health` con `"db": false` | PostgreSQL caído o credenciales `APP_DB_*` incorrectas |
 | La app no vuelve tras reiniciar el VPS | Falta ejecutar el comando que imprime `pm2 startup`, o `pm2 save` tras el último cambio |
+| Restore PG: `must be owner of database … not owned by "cloudsqlsuperuser"` | La BD destino tiene otro owner y el Admin API no puede borrarla: marca **«Borrar por SQL»** en esa BD |
+| Restore PG: `permission denied for database` | El import corre como el owner elegido sin permisos sobre la BD; en versiones actuales la app le asigna la BD antes del import. Comprueba que la versión desplegada está al día y que se recargó el worker |
+| Restore PG: `unrecognized configuration parameter "transaction_timeout"` | Dump de `pg_dump` 17/18 restaurado en una instancia PostgreSQL 16 (ver *Compatibilidad de los dumps PostgreSQL*) |
+| Un cambio no tiene efecto en los jobs | Solo se recargó la API: haz `pm2 reload ecosystem.config.cjs --env production` (incluye el worker) |
 
 ---
 
