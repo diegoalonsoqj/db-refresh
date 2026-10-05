@@ -161,14 +161,48 @@ curl http://localhost:3004/api/health        # {"ok":true,"db":true,...}
 
 ```bash
 cd ~/db-refresh
+
+# 1. Sin cambios locales en archivos versionados (.env está ignorado y no cuenta)
+git status
+
+# 2. Código nuevo
 git pull
+
+# 3. Dependencias y build del frontend
 npm ci && npm --prefix web ci && npm --prefix web run build
+
+# 4. Migración de BD (idempotente): SIEMPRE antes del reload
 npm run migrate
+
+# 5. Recargar los 3 procesos (api, worker y scheduler)
 pm2 reload ecosystem.config.cjs --env production
 pm2 save
 ```
 
-El `reload` espera hasta 15 min a que el worker termine el restore en curso; si no quieres esperar, actualiza cuando no haya jobs corriendo.
+- **Migración antes del reload**: si el código nuevo usa una columna nueva y el worker arranca antes de migrar, sus consultas fallan.
+- **Recargar los 3 procesos**, no solo la API: el worker y el scheduler son procesos aparte y, sin reload, siguen con el código viejo.
+- El `reload` espera hasta 15 min a que el worker termine el restore en curso; si no quieres esperar, actualiza cuando no haya jobs corriendo.
+
+**Verificación:**
+
+```bash
+git log --oneline -1                 # el último commit de main
+pm2 ls                               # api, worker y scheduler en "online"
+curl -s localhost:3004/api/health    # {"ok":true,"db":true,...}
+```
+
+En el navegador, recarga con `Ctrl+F5` para no ver assets en caché.
+
+### Si el historial de `main` se reescribió (force push)
+
+`git pull` falla o mezcla historiales. Sustituye el paso 2 por:
+
+```bash
+git fetch origin
+git reset --hard origin/main
+```
+
+El `reset --hard` descarta cualquier cambio local en archivos versionados (revisa antes `git status`); los ignorados (`.env`, `Keys/`) no se tocan. El resto de pasos es igual. Si el VPS muestra cambios solo de permisos tras un `chmod -R`, ignóralos con `git config core.fileMode false`.
 
 ## Operación
 
