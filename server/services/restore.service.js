@@ -33,6 +33,7 @@ export async function launchRestore(req) {
   if (missingSqlCredentials(instance).length) {
     const why = method === 'native' ? 'El restore nativo'
       : items.some((it) => it.dropViaSql) ? 'El borrado de BD por SQL'
+      : items.some((it) => it.importUser) ? 'Asignar el owner de la BD (import en PostgreSQL)'
       : items.some((it) => it.fixOrphans) && !skipSqlOnFailure ? 'La corrección de usuarios huérfanos' : null;
     if (why) {
       throw new ValidationError(
