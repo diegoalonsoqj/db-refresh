@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { api } from '../api/client.js';
-import { IconServer } from '../components/icons.jsx';
+import { BrandLogo } from '../components/icons.jsx';
 
 export default function LoginPage() {
   const { user, login } = useAuth();
@@ -37,7 +37,7 @@ export default function LoginPage() {
   return (
     <div className="center">
       <form className="card login" onSubmit={submit}>
-        <h1 className="login-brand"><IconServer /> db-refresh</h1>
+        <h1 className="login-brand"><BrandLogo /> db-refresh</h1>
         <p className="muted">Inicia sesión para continuar</p>
 
         <label>
@@ -47,12 +47,12 @@ export default function LoginPage() {
             autoComplete="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder={methods.ad ? 'DOMINIO\\usuario o tu@email' : 'tu@email'}
+            placeholder={methods.ad ? 'usuario o tu@email' : 'tu@email'}
             autoFocus
             required
           />
           {methods.ad && (
-            <span className="field-hint">Cuentas de Active Directory: tu usuario de red, con o sin dominio.</span>
+            <span className="field-hint">Cuentas de Active Directory: solo tu usuario de red, sin dominio.</span>
           )}
         </label>
         <label>
