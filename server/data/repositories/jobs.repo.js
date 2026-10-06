@@ -113,10 +113,55 @@ export async function failInterruptedJobs(message) {
   });
 }
 
+/**
+ * Cancela un job que aún no ha empezado (pending -> cancelled, también sus items).
+ * Atómico frente a claimNextJob: si el worker ya lo tomó, no cambia nada.
+ * @returns el job cancelado o null si ya no estaba pendiente
+ */
+export async function cancelPendingJob(jobId, userId, message) {
+  return withTransaction(async (client) => {
+    const { rows } = await client.query(
+      `UPDATE restore_jobs
+          SET status = 'cancelled', error_message = $3, finished_at = now(),
+              cancel_requested_at = now(), cancel_requested_by = $2
+        WHERE id = $1 AND status = 'pending'
+        RETURNING *`,
+      [jobId, userId ?? null, message],
+    );
+    if (!rows.length) return null;
+    await client.query(
+      `UPDATE restore_job_items SET status = 'cancelled', finished_at = now()
+        WHERE job_ref = $1 AND status = 'pending'`,
+      [jobId],
+    );
+    return rows[0];
+  });
+}
+
+/**
+ * Pide cancelar un job en curso: solo lo marca; el worker lo detecta y lo detiene.
+ * @returns el job o null si no estaba en curso o ya se había pedido
+ */
+export async function requestCancel(jobId, userId) {
+  const { rows } = await query(
+    `UPDATE restore_jobs SET cancel_requested_at = now(), cancel_requested_by = $2
+      WHERE id = $1 AND status = 'running' AND cancel_requested_at IS NULL
+      RETURNING *`,
+    [jobId, userId ?? null],
+  );
+  return rows[0] ?? null;
+}
+
+/** ¿Se pidió cancelar el job? (lo consulta el worker periódicamente). */
+export async function isCancelRequested(jobId) {
+  const { rows } = await query(`SELECT cancel_requested_at IS NOT NULL AS r FROM restore_jobs WHERE id = $1`, [jobId]);
+  return rows[0]?.r === true;
+}
+
 /** Lista los jobs recientes (para el historial), con instancia/proyecto. */
 export async function listJobs({ limit = 50 } = {}) {
   const { rows } = await query(
-    `SELECT j.id, j.engine, j.status, j.bucket_path, j.error_message, j.warning_message,
+    `SELECT j.id, j.engine, j.status, j.bucket_path, j.error_message, j.warning_message, j.cancel_requested_at,
             j.created_at, j.started_at, j.finished_at,
             i.instance_name, p.project_id
        FROM restore_jobs j

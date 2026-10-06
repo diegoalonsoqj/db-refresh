@@ -64,6 +64,14 @@ export class InfraError extends AppError {
   }
 }
 
+/** El usuario canceló el job: el worker lo detiene en el siguiente punto seguro. */
+export class JobCancelledError extends DomainError {
+  constructor(message = 'Cancelado por el usuario') {
+    super(message, { code: 'JOB_CANCELLED' });
+    this.status = 409;
+  }
+}
+
 export function isAppError(e) {
   return e instanceof AppError;
 }

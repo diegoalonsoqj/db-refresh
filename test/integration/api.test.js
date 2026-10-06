@@ -333,6 +333,46 @@ test('restore: validación de owner/BD de sistema y RBAC de BDs/usuarios en vivo
   }
 });
 
+test('cancelar restore: pendiente se cancela al momento, terminado 409 y viewer 403', async (t) => {
+  if (!dbOk) return t.skip('BD no disponible');
+  const { cookie } = await login(ADMIN, PW);
+  const viewer = await login(VIEWER, PW);
+  const proj = await req('POST', '/projects', { cookie, body: { projectId: `${PROJ}-cancel` } });
+  let instId = null;
+  try {
+    const inst = await req('POST', '/instances', {
+      cookie, body: { projectRef: proj.data.id, instanceName: 'itest-cancel', engine: 'sqlserver' },
+    });
+    instId = inst.data.id;
+    const launched = await req('POST', '/restores', {
+      cookie, body: { instanceId: instId, bucketPath: 'gs://itest-b/x', mapping: [{ backupFile: 'a.bak', targetDb: 'ventas' }] },
+    });
+    assert.equal(launched.status, 202);
+    const jobId = launched.data.jobId;
+    try {
+      assert.equal((await req('POST', `/restores/${jobId}/cancel`, { cookie: viewer.cookie })).status, 403);
+      const r = await req('POST', `/restores/${jobId}/cancel`, { cookie });
+      assert.equal(r.status, 200);
+      assert.equal(r.data.cancelRequested, true);
+      // Si un worker de desarrollo lo tomó antes, queda como petición al worker (running).
+      if (r.data.status === 'cancelled') {
+        const job = await req('GET', `/restores/${jobId}`, { cookie });
+        assert.equal(job.data.status, 'cancelled');
+        assert.ok(job.data.cancel_requested_at);
+        assert.deepEqual(job.data.items.map((it) => it.status), ['cancelled']);
+        const done = await req('POST', `/restores/${jobId}/cancel`, { cookie });
+        assert.equal(done.status, 409);
+      }
+    } finally {
+      await pool.query("UPDATE restore_jobs SET status = 'cancelled' WHERE id = $1", [jobId]);
+      await pool.query('DELETE FROM restore_jobs WHERE id = $1', [jobId]);
+    }
+  } finally {
+    if (instId) await req('DELETE', `/instances/${instId}`, { cookie });
+    await req('DELETE', `/projects/${proj.data.id}`, { cookie });
+  }
+});
+
 test('credenciales SQL (admin): CRUD sin exponer la contraseña, en uso 409 y RBAC', async (t) => {
   if (!dbOk) return t.skip('BD no disponible');
   const { cookie } = await login(ADMIN, PW);

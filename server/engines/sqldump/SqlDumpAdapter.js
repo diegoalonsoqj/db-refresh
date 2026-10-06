@@ -10,7 +10,6 @@ import { EngineAdapter } from '../EngineAdapter.js';
 import { DomainError } from '../../domain/errors.js';
 import * as storage from '../../gcp/storage.client.js';
 import * as csql from '../../gcp/cloudsql.client.js';
-import { config } from '../../config/index.js';
 
 export class SqlDumpAdapter extends EngineAdapter {
   /** Nombre legible del motor (para logs y mensajes de error). */
@@ -75,21 +74,6 @@ export class SqlDumpAdapter extends EngineAdapter {
       itemId: item.id,
     });
 
-    return this._wait(operation, {
-      onPoll: (status) =>
-        this.ctx.log('info', `Estado de ${item.target_db}: ${status}`, { itemId: item.id }),
-    });
-  }
-
-  /** Helper de polling con los timeouts del worker. */
-  _wait(operation, extra = {}) {
-    return csql.waitForOperation(
-      { project: this.ctx.project, operation },
-      {
-        timeoutSeconds: config.worker.operationTimeoutSeconds,
-        pollIntervalSeconds: config.worker.operationPollIntervalSeconds,
-        ...extra,
-      },
-    );
+    return this.waitImport(operation, item);
   }
 }

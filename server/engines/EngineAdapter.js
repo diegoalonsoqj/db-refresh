@@ -2,6 +2,7 @@
 // El core (worker, servicios) NO conoce el motor concreto: opera contra esta interfaz.
 import { DomainError, InfraError } from '../domain/errors.js';
 import * as csql from '../gcp/cloudsql.client.js';
+import { describeGcpError } from '../gcp/cloudsql.client.js';
 import { config } from '../config/index.js';
 import { runPostScript } from './sql/postScriptRunner.js';
 import { dropDatabaseViaSql } from './postgres/dropViaSql.js';
@@ -10,12 +11,13 @@ import { resolveSqlConnection } from './sql/connection.js';
 
 /**
  * Contrato que todo adaptador de motor debe cumplir.
- * `ctx` es el contexto de restauración: { instance, project, bucketPath, log, preScripts, postScripts }
+ * `ctx` es el contexto de restauración: { instance, project, bucketPath, log, preScripts, postScripts, signal }
  *   - instance:    fila de gcp_instances (con project_id, db_host, db_port, credential_ref...)
  *   - project:     project_id de GCP
  *   - log:         (level, message, {itemId}) => Promise  para emitir eventos de progreso
  *   - preScripts:  filas activas de instance_post_scripts (phase 'pre'), en orden de ejecución
  *   - postScripts: ídem (phase 'post')
+ *   - signal:      AbortSignal que se activa si el usuario cancela el job
  */
 export class EngineAdapter {
   constructor(ctx) {
@@ -98,6 +100,34 @@ export class EngineAdapter {
       database: targetDb,
       log: (level, msg) => this.ctx.log(level, msg, { itemId: item?.id ?? null }),
     });
+  }
+
+  /**
+   * Espera la operación de import de un item. Si el usuario cancela el job, pide a
+   * Cloud SQL que la cancele (operations.cancel) y espera a que termine.
+   * -> { ok, error?, aborted? }
+   */
+  async waitImport(operation, item) {
+    const itemId = item.id;
+    return csql.waitForOperation(
+      { project: this.ctx.project, operation },
+      {
+        timeoutSeconds: config.worker.operationTimeoutSeconds,
+        pollIntervalSeconds: config.worker.operationPollIntervalSeconds,
+        signal: this.ctx.signal,
+        onPoll: (status) => this.ctx.log('info', `Estado de ${item.target_db}: ${status}`, { itemId }),
+        onAbort: async () => {
+          await this.ctx.log('warning', `Cancelando la operación de import de ${item.target_db} en Cloud SQL.`, { itemId });
+          try {
+            await csql.cancelOperation({ project: this.ctx.project, operation });
+          } catch (err) {
+            await this.ctx.log('warning',
+              `Cloud SQL no aceptó la cancelación (${describeGcpError(err.cause) || err.message}); ` +
+                'se espera a que la operación termine.', { itemId });
+          }
+        },
+      },
+    );
   }
 
   /** Crea una BD vacía (databases.insert) y espera a que termine la operación. */
@@ -196,6 +226,7 @@ export class EngineAdapter {
       {
         timeoutSeconds: config.worker.instanceIdleWaitSeconds,
         pollIntervalSeconds: config.worker.operationPollIntervalSeconds,
+        signal: this.ctx.signal,
         onWait: (busy) =>
           this.ctx.log(
             'warning',

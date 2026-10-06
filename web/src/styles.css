@@ -286,6 +286,8 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
 .btn.primary:hover { background: var(--primary-hover); }
 .btn.ghost { background: transparent; }
+.btn.danger { background: transparent; border-color: rgba(255,92,92,.5); color: var(--err); }
+.btn.danger:hover:not(:disabled) { background: rgba(255, 92, 92, .12); }
 .btn.small { padding: .3rem .6rem; font-size: .8rem; }
 
 /* --- Tables --- */

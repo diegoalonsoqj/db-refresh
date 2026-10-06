@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../api/client.js';
 import StatusBadge from '../components/StatusBadge.jsx';
-import { IconArrowLeft } from '../components/icons.jsx';
+import { IconArrowLeft, IconClose } from '../components/icons.jsx';
+import { useAuth } from '../auth/AuthContext.jsx';
 
 const LEVEL_LABEL = { info: 'INFO', warning: 'WARN', error: 'ERROR' };
 // Los eventos antiguos se guardaron con emojis y separadores '===': se limpian al mostrarlos.
@@ -16,7 +17,11 @@ export default function JobDetailPage() {
   const { id } = useParams();
   const [job, setJob] = useState(null);
   const [events, setEvents] = useState([]);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState(null);
   const logRef = useRef(null);
+  const { user } = useAuth();
+  const canCancel = user && ['operator', 'admin'].includes(user.role);
 
   // Estado del job: refresca cada 3s hasta que sea terminal (item statuses).
   useEffect(() => {
@@ -53,7 +58,29 @@ export default function JobDetailPage() {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [events]);
 
+  const cancelJob = async () => {
+    const running = job.status === 'running';
+    const msg = running
+      ? '¿Cancelar este restore?\n\nSe detendrá la operación en curso (import de Cloud SQL o pg_restore/psql). ' +
+        'La BD que se esté restaurando en ese momento puede quedar vacía o incompleta; ' +
+        'las siguientes no se tocarán y no se ejecutarán los post-scripts.'
+      : '¿Cancelar este restore? Aún no ha empezado: no se modificará ninguna BD.';
+    if (!confirm(msg)) return;
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      await api.post(`/restores/${id}/cancel`);
+      setJob(await api.get(`/restores/${id}`));
+    } catch (err) {
+      setCancelError(err.message);
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   if (!job) return <div className="muted">Cargando…</div>;
+  const active = !TERMINAL.has(job.status);
+  const cancelRequested = active && !!job.cancel_requested_at;
   const hasOwner = job.items.some((it) => it.import_user);
 
   return (
@@ -62,13 +89,26 @@ export default function JobDetailPage() {
         <h2>
           Job <span className="mono">{job.id.slice(0, 8)}</span> <StatusBadge status={job.status} warning={job.warning_message} />
         </h2>
-        <Link className="btn ghost" to="/jobs"><IconArrowLeft /> Historial</Link>
+        <div className="row">
+          {canCancel && active && (
+            <button type="button" className="btn danger" onClick={cancelJob} disabled={cancelling || cancelRequested}>
+              <IconClose /> {cancelRequested ? 'Cancelando…' : 'Cancelar restore'}
+            </button>
+          )}
+          <Link className="btn ghost" to="/jobs"><IconArrowLeft /> Historial</Link>
+        </div>
       </div>
       <div className="muted small">
         Método: {job.method === 'native' ? 'restore nativo (pg_restore / psql)' : 'import de Cloud SQL'}
         {job.bucket_path && <> · origen <span className="mono">{job.bucket_path}</span></>}
       </div>
-      {job.error_message && <div className="alert error">{job.error_message}</div>}
+      {cancelError && <div className="alert error">{cancelError}</div>}
+      {cancelRequested && (
+        <div className="alert warn">
+          Cancelación solicitada: el job se detendrá en unos segundos (se espera a que Cloud SQL confirme la cancelación de la operación en curso).
+        </div>
+      )}
+      {job.error_message && <div className={`alert ${job.status === 'cancelled' ? 'warn' : 'error'}`}>{job.error_message}</div>}
       {job.warning_message && <div className="alert warn">{job.warning_message}</div>}
 
       <h3>Bases de datos</h3>

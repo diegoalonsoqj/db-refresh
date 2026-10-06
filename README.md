@@ -200,7 +200,7 @@ Base: `/api`. Todo salvo `health`, `auth/methods`, `auth/login` requiere sesión
 |---|---|
 | Auth | `GET auth/methods`, `POST auth/login`, `POST auth/logout`, `GET auth/me`, `POST auth/change-password` |
 | Usuarios (admin) | `GET/POST users`, `PATCH users/:id`, `POST users/:id/reset-password`, `DELETE users/:id`, `GET audit` |
-| Backups / Restores | `GET backups`, `GET/POST restores`, `GET restores/:id`, `GET restores/:id/events` (SSE) |
+| Backups / Restores | `GET backups`, `GET/POST restores`, `GET restores/:id`, `GET restores/:id/events` (SSE), `POST restores/:id/cancel` (operator/admin) |
 | Settings (admin) | `GET/PUT settings/ad`, `POST settings/ad/test`, `GET/PUT settings/gcp`, `POST settings/gcp/test` |
 | Catálogo | `projects`, `instances` (+ `instances/:id/buckets`), `buckets` (lecturas: autenticado; escrituras: admin) |
 | Scripts pre/post | `instances/:id/post-scripts` (+ `/:scriptId`, `/:scriptId/run`) — CRUD con `phase: 'pre' \| 'post'` (por defecto `post`), **solo admin** (también lectura: es SQL arbitrario) |

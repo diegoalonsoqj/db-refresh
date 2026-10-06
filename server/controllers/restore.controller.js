@@ -49,6 +49,14 @@ export async function listJobs(_req, res, next) {
   }
 }
 
+export async function cancelJob(req, res, next) {
+  try {
+    res.json(await restoreService.cancelJob(req.params.id, req.user));
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function getJob(req, res, next) {
   try {
     const job = await restoreService.getJob(req.params.id);

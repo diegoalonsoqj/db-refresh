@@ -3,11 +3,13 @@
 // - deleteDatabase()  -> databases.delete    (equiv. DROP DATABASE)
 // - getOperation()    -> operations.get       (equiv. `gcloud sql operations describe`)
 // - listOperations()  -> operations.list      (equiv. `gcloud sql operations list`)
+// - cancelOperation() -> operations.cancel    (equiv. `gcloud sql operations cancel`)
 // - listDatabases()   -> databases.list       (equiv. `gcloud sql databases list`)
 // - listUsers()       -> users.list           (equiv. `gcloud sql users list`)
 import { sqladmin } from '@googleapis/sqladmin';
 import { GoogleAuth } from 'google-auth-library';
-import { InfraError } from '../domain/errors.js';
+import { InfraError, JobCancelledError } from '../domain/errors.js';
+import { sleep } from '../lib/cancel.js';
 import { getSaCredentials } from '../services/settings.service.js';
 import { currentEpoch } from './state.js';
 
@@ -215,27 +217,48 @@ export async function listOperations({ project, instance }) {
 }
 
 /**
+ * Cancela una operación en curso (operations.cancel). Cloud SQL lo admite en
+ * imports/exports; la operación termina DONE con error cuando se detiene.
+ */
+export async function cancelOperation({ project, operation }) {
+  try {
+    const client = await getClient();
+    await client.operations.cancel({ project, operation });
+  } catch (err) {
+    throw new InfraError(`No se pudo cancelar la operación ${operation}`, { code: 'OP_CANCEL_FAILED', cause: err });
+  }
+}
+
+/**
  * Hace polling de una operación hasta DONE / error / timeout.
- * @returns { ok: boolean, error?: object }
+ * Con `signal`: al abortarse llama una vez a `onAbort` (p.ej. cancelOperation) y
+ * sigue esperando a que la operación termine, para no dejar la instancia ocupada.
+ * @returns { ok: boolean, error?: object, aborted?: boolean }
  */
 export async function waitForOperation(
   { project, operation },
-  { timeoutSeconds, pollIntervalSeconds, onPoll } = {},
+  { timeoutSeconds, pollIntervalSeconds, onPoll, signal = null, onAbort = null } = {},
 ) {
   const deadline = Date.now() + (timeoutSeconds ?? 10_800) * 1000;
   const intervalMs = (pollIntervalSeconds ?? 30) * 1000;
+  let aborted = false;
 
   while (Date.now() < deadline) {
+    if (signal?.aborted && !aborted) {
+      aborted = true;
+      if (onAbort) await onAbort();
+    }
     const { status, error } = await getOperation({ project, operation });
     if (onPoll) await onPoll(status);
 
     if (status === 'DONE') {
-      if (error) return { ok: false, error };
-      return { ok: true };
+      if (error) return { ok: false, error, aborted };
+      return { ok: true, aborted };
     }
-    await new Promise((r) => setTimeout(r, intervalMs));
+    // Tras abortar, polling más frecuente para liberar el job en cuanto termine.
+    await sleep(aborted ? Math.min(intervalMs, 5000) : intervalMs, aborted ? null : signal);
   }
-  return { ok: false, error: { code: 'TIMEOUT', message: `Timeout esperando ${operation}` } };
+  return { ok: false, error: { code: 'TIMEOUT', message: `Timeout esperando ${operation}` }, aborted };
 }
 
 /** Filtra las operaciones que aún no terminaron (PENDING/RUNNING). Pura. */
@@ -251,7 +274,7 @@ export function activeOperations(items = []) {
  */
 export async function waitForInstanceIdle(
   { project, instance },
-  { timeoutSeconds = 900, pollIntervalSeconds = 30, onWait } = {},
+  { timeoutSeconds = 900, pollIntervalSeconds = 30, onWait, signal = null } = {},
 ) {
   const deadline = Date.now() + timeoutSeconds * 1000;
   for (;;) {
@@ -263,6 +286,7 @@ export async function waitForInstanceIdle(
     if (busy.length === 0) return { ok: true };
     if (Date.now() >= deadline) return { ok: false, busy };
     if (onWait) await onWait(busy);
-    await new Promise((r) => setTimeout(r, pollIntervalSeconds * 1000));
+    await sleep(pollIntervalSeconds * 1000, signal);
+    if (signal?.aborted) throw new JobCancelledError();
   }
 }

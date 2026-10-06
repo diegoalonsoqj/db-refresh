@@ -70,6 +70,7 @@ router.get('/restores/:id/events', authenticate, restore.streamJob); // SSE
 
 // Lanzar restore es destructivo: solo operator/admin.
 router.post('/restores', authenticate, requireRole('operator', 'admin'), restore.launchRestore);
+router.post('/restores/:id/cancel', authenticate, requireRole('operator', 'admin'), restore.cancelJob);
 
 // --- Settings (AD/LDAP + GCP service account) — solo admin ---
 router.get('/settings/ad', ...admin, settings.getAd);
