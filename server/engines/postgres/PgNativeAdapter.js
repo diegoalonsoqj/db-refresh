@@ -127,6 +127,7 @@ export class PgNativeAdapter extends EngineAdapter {
       input,
       keepStdout: false,
       timeoutMs: config.nativeRestore.timeoutSeconds * 1000,
+      signal: this.ctx.signal,
       onLine: (line) => this.ctx.log(/error|fatal/i.test(line) ? 'error' : 'info', `${tool}: ${line}`, { itemId: item.id }),
     });
     if (linesOmitted) {

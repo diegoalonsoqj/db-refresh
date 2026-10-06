@@ -3,9 +3,10 @@
 import * as catalogRepo from '../data/repositories/catalog.repo.js';
 import * as jobsRepo from '../data/repositories/jobs.repo.js';
 import { parseGsUri } from '../gcp/storage.client.js';
-import { NotFoundError, ValidationError } from '../domain/errors.js';
+import { ConflictError, NotFoundError, ValidationError } from '../domain/errors.js';
 import { validateMapping } from '../domain/restoreMapping.js';
 import { missingSqlCredentials } from '../domain/instance.js';
+import { getUserById } from '../data/repositories/users.repo.js';
 
 /**
  * Crea (encola) un job de restauración.
@@ -68,4 +69,30 @@ export function getJob(jobId) {
 
 export function getJobEvents(jobId, sinceId = 0) {
   return jobsRepo.getEventsSince(jobId, sinceId);
+}
+
+/**
+ * Cancela un job. Pendiente: se cancela al momento (no se ha tocado nada).
+ * En curso: se marca la petición y el worker la atiende en segundos (cancela la
+ * operación de Cloud SQL en curso o detiene pg_restore/psql); el job queda 'cancelled'.
+ * @returns { status, cancelRequested }
+ */
+export async function cancelJob(jobId, actor) {
+  const user = actor?.id ? await getUserById(actor.id).catch(() => null) : null;
+  const who = user?.full_name || user?.username || user?.email || actor?.email || 'un usuario';
+
+  const cancelled = await jobsRepo.cancelPendingJob(jobId, actor?.id, `Cancelado por ${who} antes de empezar.`);
+  if (cancelled) {
+    await jobsRepo.addEvent(jobId, { level: 'warning', message: `Job cancelado por ${who} antes de empezar; no se ha modificado ninguna BD.` });
+    return { status: 'cancelled', cancelRequested: true };
+  }
+  // Ya no estaba pendiente (o el worker acaba de tomarlo): pedir la cancelación al worker.
+  if (await jobsRepo.requestCancel(jobId, actor?.id)) {
+    await jobsRepo.addEvent(jobId, { level: 'warning', message: `Cancelación solicitada por ${who}.` });
+    return { status: 'running', cancelRequested: true };
+  }
+  const job = await jobsRepo.getJobWithItems(jobId);
+  if (!job) throw new NotFoundError('Job no encontrado');
+  if (job.status === 'running') return { status: 'running', cancelRequested: true }; // ya pedida
+  throw new ConflictError(`El job ya terminó (${job.status}); no se puede cancelar`, { code: 'JOB_FINISHED' });
 }

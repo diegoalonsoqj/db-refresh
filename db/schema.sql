@@ -247,6 +247,13 @@ ALTER TABLE restore_job_items ADD COLUMN IF NOT EXISTS orphan_db_owner text;
 -- Migración idempotente: borrar la BD destino por SQL (credencial de la instancia) en
 -- lugar del Admin API; solo PostgreSQL, para BD cuyo owner no es cloudsqlsuperuser.
 ALTER TABLE restore_job_items ADD COLUMN IF NOT EXISTS drop_via_sql boolean NOT NULL DEFAULT false;
+-- Migración idempotente: cancelación de jobs. Un job pendiente se cancela al momento;
+-- en uno en curso la API solo marca la petición y el worker la atiende (cancela la
+-- operación de Cloud SQL o mata pg_restore/psql) y deja el job 'cancelled'.
+ALTER TYPE item_status ADD VALUE IF NOT EXISTS 'cancelled';
+ALTER TABLE restore_jobs ADD COLUMN IF NOT EXISTS cancel_requested_at timestamptz;
+ALTER TABLE restore_jobs ADD COLUMN IF NOT EXISTS cancel_requested_by uuid
+  REFERENCES app_users(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS job_events (
   id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

@@ -7,7 +7,6 @@ import { EngineAdapter } from '../EngineAdapter.js';
 import { DomainError } from '../../domain/errors.js';
 import * as storage from '../../gcp/storage.client.js';
 import * as csql from '../../gcp/cloudsql.client.js';
-import { config } from '../../config/index.js';
 import { resolveSqlConnection } from '../sql/connection.js';
 import { withConnection } from './mssql.client.js';
 import { describeOrphanResult, ensureDbAccess, fixOrphanUsers } from './orphans.js';
@@ -96,15 +95,6 @@ export class SqlServerAdapter extends EngineAdapter {
       itemId: item.id,
     });
 
-    const res = await csql.waitForOperation(
-      { project: this.ctx.project, operation },
-      {
-        timeoutSeconds: config.worker.operationTimeoutSeconds,
-        pollIntervalSeconds: config.worker.operationPollIntervalSeconds,
-        onPoll: (status) =>
-          this.ctx.log('info', `Estado de ${item.target_db}: ${status}`, { itemId: item.id }),
-      },
-    );
-    return res;
+    return this.waitImport(operation, item);
   }
 }

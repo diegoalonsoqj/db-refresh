@@ -4,7 +4,7 @@
 // los argumentos ni en los logs. El dump entra por stdin en streaming.
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
-import { DomainError, InfraError } from '../../domain/errors.js';
+import { DomainError, InfraError, JobCancelledError } from '../../domain/errors.js';
 import { config } from '../../config/index.js';
 
 const EXE = process.platform === 'win32' ? '.exe' : '';
@@ -82,8 +82,9 @@ export async function toolVersion(name) {
  * Ejecuta un binario. `input` (Readable) se canaliza a stdin. `onLine` recibe
  * cada línea de stderr/stdout (hasta `maxLines`; el resto solo cuenta).
  * Nunca usa shell. Resuelve { code, stdout, tail } (tail = últimas líneas).
+ * Con `signal` (cancelación del job) mata el proceso y rechaza con JobCancelledError.
  */
-export function runTool({ cmd, args, env = process.env, input = null, onLine = null, timeoutMs, maxLines = 200, keepStdout = true }) {
+export function runTool({ cmd, args, env = process.env, input = null, onLine = null, timeoutMs, maxLines = 200, keepStdout = true, signal = null }) {
   return new Promise((resolve, reject) => {
     let child;
     try {
@@ -96,7 +97,18 @@ export function runTool({ cmd, args, env = process.env, input = null, onLine = n
     const tail = [];
     let emitted = 0;
     let settled = false;
-    const finish = (fn) => { if (!settled) { settled = true; clearTimeout(timer); fn(); } };
+    const finish = (fn) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      fn();
+    };
+    const onAbort = () => {
+      child.kill('SIGKILL');
+      input?.destroy();
+      finish(() => reject(new JobCancelledError(`${cmd} detenido: cancelado por el usuario`)));
+    };
 
     const handleChunk = (buf, isStdout) => {
       const text = buf.toString('utf8');
@@ -118,6 +130,9 @@ export function runTool({ cmd, args, env = process.env, input = null, onLine = n
         finish(() => reject(new InfraError(`${cmd} superó el tiempo máximo (${Math.round(timeoutMs / 1000)}s)`, { code: 'NATIVE_TIMEOUT' })));
       }, timeoutMs)
       : null;
+
+    if (signal?.aborted) onAbort();
+    else signal?.addEventListener('abort', onAbort, { once: true });
 
     child.on('error', (err) => {
       const missing = err.code === 'ENOENT';
