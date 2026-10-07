@@ -24,12 +24,15 @@ export function NewButton({ children, ...props }) {
   );
 }
 
-/** Acción de fila con solo icono; `label` va como tooltip y aria-label. */
-export function IconButton({ icon: Icon, label, title, danger, ...props }) {
+/**
+ * Acción de fila con solo icono; `label` va como tooltip y aria-label.
+ * `primary`: acción principal destacada (p.ej. Ejecutar, como en db-keeper).
+ */
+export function IconButton({ icon: Icon, label, title, danger, primary, ...props }) {
   return (
     <button
       type="button"
-      className={`icon-action ${danger ? 'danger' : ''}`}
+      className={`icon-action ${danger ? 'danger' : ''} ${primary ? 'primary' : ''}`}
       title={title ?? label}
       aria-label={label}
       {...props}
