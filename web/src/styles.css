@@ -241,14 +241,29 @@ a { color: var(--primary); text-decoration: none; }
 .app-header {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: .75rem;
   height: 56px;              /* misma altura que .sidebar-head: las líneas casan */
   flex-shrink: 0;
   padding: 0 1.25rem 0 2rem;
   border-bottom: 1px solid var(--border);
 }
+.header-left { min-width: 0; }
+.page-title { margin: 0; font-size: 1.05rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .header-right { display: flex; align-items: center; gap: .75rem; }
+.header-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0;
+}
+.header-icon-btn:hover { color: var(--text); background: var(--surface-2); border-color: var(--border); }
 .app-main { flex: 1; min-height: 0; overflow-y: auto; padding: 1.5rem 2rem; }
 
 /* --- Menú de usuario --- */
@@ -379,6 +394,8 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 .btn.danger { background: transparent; border-color: color-mix(in srgb, var(--err) 50%, transparent); color: var(--err); }
 .btn.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--err) 12%, transparent); }
 .btn.small { padding: .3rem .6rem; font-size: .8rem; }
+.btn.danger-solid { background: var(--err); border-color: var(--err); color: #fff; font-weight: 600; }
+.btn.danger-solid:hover { background: color-mix(in srgb, var(--err) 85%, #000); }
 
 /* --- Tables --- */
 .table { width: 100%; border-collapse: collapse; margin-top: .5rem; }
@@ -432,6 +449,7 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 .tabs button.active { color: var(--text); border-bottom-color: var(--primary); }
 
 /* --- Toolbar --- */
+.page-head { display: flex; justify-content: flex-end; align-items: center; gap: .5rem; margin-bottom: .5rem; }
 .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: .5rem; gap: 1rem; }
 .actions { display: flex; gap: .35rem; }
 
@@ -445,13 +463,19 @@ input[type="checkbox"] { width: 16px; height: 16px; }
   border-radius: var(--radius); width: 460px; max-width: 100%;
   max-height: 90vh; display: flex; flex-direction: column;
 }
-.modal.wide { width: 640px; }
+.modal-sm { width: 400px; }
+.modal-lg { width: 640px; }
 .modal-head {
   display: flex; justify-content: space-between; align-items: center;
   padding: 1rem 1.25rem; border-bottom: 1px solid var(--border);
 }
 .modal-head h3 { margin: 0; }
 .modal-body { padding: 1.25rem; overflow-y: auto; }
+.modal-foot {
+  display: flex; justify-content: flex-end; gap: .5rem;
+  padding: .85rem 1.25rem; border-top: 1px solid var(--border);
+}
+.confirm-msg { margin: 0; white-space: pre-line; }
 .modal-body .stack { max-width: none; }
 
 .row.gap { gap: .6rem; }
@@ -594,3 +618,30 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 }
 .segmented button:hover { color: var(--text); }
 .segmented button.active { background: var(--primary); color: var(--on-primary); font-weight: 600; }
+
+/* --- Avisos flotantes (Toast) --- */
+.toast-stack {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  z-index: 200;
+  max-width: min(420px, calc(100vw - 2.5rem));
+}
+.toast {
+  padding: .7rem .9rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 10px 28px var(--shadow);
+  cursor: pointer;
+  font-size: .88rem;
+  word-break: break-word;
+}
+.toast-success { border-left-color: var(--ok); }
+.toast-error { border-left-color: var(--err); }
+.toast-info { border-left-color: var(--primary); }

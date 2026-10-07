@@ -213,7 +213,6 @@ export default function LaunchPage() {
 
   return (
     <div>
-      <h2>Lanzar restauración</h2>
       <div className="alert warn">
         <IconAlert /> La restauración es destructiva: si la BD de destino existe, se elimina antes de importar.
       </div>

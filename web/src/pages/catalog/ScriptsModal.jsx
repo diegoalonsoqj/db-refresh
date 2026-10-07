@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import Modal from '../../components/Modal.jsx';
 import { IconLaunch } from '../../components/icons.jsx';
+import { useConfirm } from '../../components/ConfirmDialog.jsx';
 
 const LEVEL_LABEL = { info: 'INFO', warning: 'WARN', error: 'ERROR' };
 
@@ -45,6 +46,7 @@ const SQL_HINT = {
 };
 
 export default function ScriptsModal({ instance, onClose }) {
+  const confirm = useConfirm();
   const [phase, setPhase] = useState('pre');
   const [scripts, setScripts] = useState(null);
   const [editing, setEditing] = useState(null); // null | {} (nuevo) | script
@@ -84,7 +86,11 @@ export default function ScriptsModal({ instance, onClose }) {
 
   // Ejecuta YA la versión guardada del script en la instancia (aunque esté inactivo).
   const runScript = async (s) => {
-    if (!confirm(`¿Ejecutar ahora "${s.name}" en la instancia ${instance.instance_name}?\n\nSe ejecuta la versión guardada del script, con la credencial de la instancia.`)) return;
+    if (!(await confirm({
+      title: 'Ejecutar script',
+      message: `¿Ejecutar ahora "${s.name}" en la instancia ${instance.instance_name}?\n\nSe ejecuta la versión guardada del script, con la credencial de la instancia.`,
+      confirmLabel: 'Ejecutar',
+    }))) return;
     setRun({ name: s.name, pending: true });
     try {
       setRun({ name: s.name, ...(await api.post(`${base}/${s.id}/run`, {})) });
@@ -101,7 +107,7 @@ export default function ScriptsModal({ instance, onClose }) {
   );
 
   const remove = async (s) => {
-    if (!confirm(`¿Eliminar el script "${s.name}"?`)) return;
+    if (!(await confirm({ message: `¿Eliminar el script "${s.name}"?`, confirmLabel: 'Eliminar', danger: true }))) return;
     setBusy(true); setErr(null);
     try { await api.del(`${base}/${s.id}`); await load(); }
     catch (e) { setErr(e.message); }

@@ -4,10 +4,14 @@ import { api } from '../api/client.js';
 import { useList } from '../hooks/useList.js';
 import Modal from '../components/Modal.jsx';
 import { IconClose } from '../components/icons.jsx';
+import { useConfirm } from '../components/ConfirmDialog.jsx';
+import { useToast } from '../components/Toast.jsx';
 
 const empty = { instanceRef: '', bucketRef: '', cronExpr: '0 3 * * *', mapping: [{ backupFile: '', targetDb: '' }], isActive: true };
 
 export default function SchedulesPage() {
+  const confirm = useConfirm();
+  const toast = useToast();
   const navigate = useNavigate();
   const { data: schedules, error, reload } = useList('/schedules');
   const { data: instances } = useList('/instances');
@@ -58,14 +62,14 @@ export default function SchedulesPage() {
   };
 
   const remove = async (s) => {
-    if (!confirm('¿Eliminar esta programación?')) return;
+    if (!(await confirm({ message: '¿Eliminar esta programación?', confirmLabel: 'Eliminar', danger: true }))) return;
     try { await api.del(`/schedules/${s.id}`); await reload(); }
-    catch (err) { alert(err.message); }
+    catch (err) { toast.error(err.message); }
   };
 
   const run = async (s) => {
     try { const d = await api.post(`/schedules/${s.id}/run`); navigate(`/jobs/${d.jobId}`); }
-    catch (err) { alert(err.message); }
+    catch (err) { toast.error(err.message); }
   };
 
   if (error) return <div className="alert error">{error}</div>;
@@ -73,8 +77,7 @@ export default function SchedulesPage() {
 
   return (
     <div>
-      <div className="toolbar">
-        <h2 style={{ margin: 0 }}>Restauraciones programadas</h2>
+      <div className="page-head">
         <button className="btn primary small" onClick={openNew} disabled={!instances?.length || !buckets?.length}>+ Nueva</button>
       </div>
       <table className="table">

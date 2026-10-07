@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
+import { useTheme } from '../theme/ThemeContext.jsx';
 import ChangePasswordModal from './ChangePasswordModal.jsx';
 import {
   IconHistory, IconLaunch, IconSchedule, IconCatalog, IconUsers,
   IconAudit, IconSettings, IconKey, IconLogout, BrandLogo,
-  IconChevronLeft, IconChevronDown, IconLock,
+  IconChevronLeft, IconChevronDown, IconLock, IconSun, IconMoon,
 } from './icons.jsx';
 
 const COLLAPSE_KEY = 'dbrefresh.sidebarCollapsed';
@@ -103,8 +104,20 @@ function UserMenu({ onChangePassword }) {
   );
 }
 
+/** Alterna claro/oscuro con la paleta actual (la misma preferencia que Ajustes > Apariencia). */
+function ThemeToggle() {
+  const { isDark, setMode } = useTheme();
+  const label = isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro';
+  return (
+    <button type="button" className="header-icon-btn" onClick={() => setMode(isDark ? 'light' : 'dark')} title={label} aria-label={label}>
+      {isDark ? <IconSun /> : <IconMoon />}
+    </button>
+  );
+}
+
 export default function Layout() {
   const { user } = useAuth();
+  const { pathname } = useLocation();
   const [showPwd, setShowPwd] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1');
 
@@ -112,15 +125,19 @@ export default function Layout() {
   const isAdmin = user?.role === 'admin';
 
   const items = [
-    { to: '/jobs', label: 'Historial', Icon: IconHistory, show: true },
-    { to: '/launch', label: 'Lanzar restore', Icon: IconLaunch, show: canLaunch },
-    { to: '/schedules', label: 'Programadas', Icon: IconSchedule, show: canLaunch },
-    { to: '/catalog', label: 'Catálogo', Icon: IconCatalog, show: isAdmin },
-    { to: '/credentials', label: 'Credenciales', Icon: IconLock, show: isAdmin },
+    { to: '/jobs', label: 'Historial', title: 'Historial de restauraciones', Icon: IconHistory, show: true },
+    { to: '/launch', label: 'Lanzar restore', title: 'Lanzar restauración', Icon: IconLaunch, show: canLaunch },
+    { to: '/schedules', label: 'Programadas', title: 'Restauraciones programadas', Icon: IconSchedule, show: canLaunch },
+    { to: '/catalog', label: 'Catálogo', title: 'Catálogo GCP', Icon: IconCatalog, show: isAdmin },
+    { to: '/credentials', label: 'Credenciales', title: 'Credenciales SQL', Icon: IconLock, show: isAdmin },
     { to: '/users', label: 'Usuarios', Icon: IconUsers, show: isAdmin },
     { to: '/audit', label: 'Auditoría', Icon: IconAudit, show: isAdmin },
     { to: '/settings', label: 'Ajustes', Icon: IconSettings, show: true },
   ].filter((i) => i.show);
+
+  // Título del módulo activo en el header (patrón de db-keeper); /jobs/:id cae en Historial.
+  const active = items.find((i) => pathname === i.to || pathname.startsWith(`${i.to}/`));
+  const pageTitle = active?.title ?? active?.label ?? '';
 
   const toggleSidebar = () => {
     setCollapsed((c) => {
@@ -164,7 +181,11 @@ export default function Layout() {
 
       <div className="content">
         <header className="app-header">
+          <div className="header-left">
+            <h1 className="page-title">{pageTitle}</h1>
+          </div>
           <div className="header-right">
+            <ThemeToggle />
             <UserMenu onChangePassword={() => setShowPwd(true)} />
           </div>
         </header>

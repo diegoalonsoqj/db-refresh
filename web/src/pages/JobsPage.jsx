@@ -23,7 +23,6 @@ export default function JobsPage() {
 
   return (
     <div>
-      <h2>Historial de restauraciones</h2>
       {jobs.length === 0 ? (
         <p className="muted">Sin jobs todavía.</p>
       ) : (

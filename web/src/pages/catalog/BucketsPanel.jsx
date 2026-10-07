@@ -2,10 +2,14 @@ import { useState } from 'react';
 import { api } from '../../api/client.js';
 import { useList } from '../../hooks/useList.js';
 import Modal from '../../components/Modal.jsx';
+import { useConfirm } from '../../components/ConfirmDialog.jsx';
+import { useToast } from '../../components/Toast.jsx';
 
 const empty = { projectRef: '', bucketName: '', basePrefix: '', description: '', isActive: true };
 
 export default function BucketsPanel({ projects, onChange }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const { data: buckets, error, reload } = useList('/buckets');
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(empty);
@@ -30,9 +34,9 @@ export default function BucketsPanel({ projects, onChange }) {
   };
 
   const remove = async (b) => {
-    if (!confirm(`¿Eliminar el bucket ${b.bucket_name}?`)) return;
+    if (!(await confirm({ message: `¿Eliminar el bucket ${b.bucket_name}?`, confirmLabel: 'Eliminar', danger: true }))) return;
     try { await api.del(`/buckets/${b.id}`); await reload(); onChange?.(); }
-    catch (err) { alert(err.message); }
+    catch (err) { toast.error(err.message); }
   };
 
   if (error) return <div className="alert error">{error}</div>;

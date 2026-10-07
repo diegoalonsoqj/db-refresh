@@ -3,11 +3,15 @@ import { api } from '../api/client.js';
 import { useList } from '../hooks/useList.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import Modal from '../components/Modal.jsx';
+import { useConfirm } from '../components/ConfirmDialog.jsx';
+import { useToast } from '../components/Toast.jsx';
 
 const ROLES = ['admin', 'operator', 'viewer'];
 const empty = { authSource: 'local', email: '', username: '', fullName: '', role: 'viewer', password: '' };
 
 export default function UsersPage() {
+  const confirm = useConfirm();
+  const toast = useToast();
   const { user: me } = useAuth();
   const { data: users, error, reload } = useList('/users');
   const { data: ad } = useList('/settings/ad');
@@ -32,7 +36,7 @@ export default function UsersPage() {
 
   const patch = async (u, body) => {
     try { await api.patch(`/users/${u.id}`, body); await reload(); }
-    catch (err) { alert(err.message); }
+    catch (err) { toast.error(err.message); }
   };
 
   const label = (u) => u.email ?? u.username;
@@ -40,14 +44,14 @@ export default function UsersPage() {
   const resetPwd = async (u) => {
     const password = prompt(`Nuevo password para ${label(u)} (mín. 10):`);
     if (!password) return;
-    try { await api.post(`/users/${u.id}/reset-password`, { password }); alert('Password actualizado'); }
-    catch (err) { alert(err.message); }
+    try { await api.post(`/users/${u.id}/reset-password`, { password }); toast.success('Password actualizado'); }
+    catch (err) { toast.error(err.message); }
   };
 
   const remove = async (u) => {
-    if (!confirm(`¿Eliminar a ${label(u)}?`)) return;
+    if (!(await confirm({ message: `¿Eliminar a ${label(u)}?`, confirmLabel: 'Eliminar', danger: true }))) return;
     try { await api.del(`/users/${u.id}`); await reload(); }
-    catch (err) { alert(err.message); }
+    catch (err) { toast.error(err.message); }
   };
 
   if (error) return <div className="alert error">{error}</div>;
@@ -55,8 +59,7 @@ export default function UsersPage() {
 
   return (
     <div>
-      <div className="toolbar">
-        <h2 style={{ margin: 0 }}>Usuarios</h2>
+      <div className="page-head">
         <button className="btn primary small" onClick={() => { setForm(empty); setCreating(true); setFormErr(null); }}>+ Nuevo usuario</button>
       </div>
       <table className="table">
