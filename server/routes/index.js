@@ -8,6 +8,7 @@ import * as schedule from '../controllers/schedule.controller.js';
 import * as usersCtl from '../controllers/users.controller.js';
 import * as postScripts from '../controllers/postScripts.controller.js';
 import * as credentials from '../controllers/credentials.controller.js';
+import * as dashboard from '../controllers/dashboard.controller.js';
 import { authenticate, requireRole } from '../auth/middleware.js';
 import { loginLimiter } from '../middleware/rateLimit.js';
 import { pool } from '../data/pool.js';
@@ -64,6 +65,8 @@ router.get('/audit', ...admin, usersCtl.audit);
 router.get('/backups', authenticate, restore.listBackups);
 // Lee el índice de un dump tar (ejecuta pg_restore en el servidor): operator/admin.
 router.get('/backups/schemas', ...operator, restore.listDumpSchemas);
+// Panel (página de inicio): indicadores, últimos restores y próximas ejecuciones. Cualquier autenticado.
+router.get('/dashboard', authenticate, dashboard.getDashboard);
 router.get('/restores', authenticate, restore.listJobs);
 router.get('/restores/:id', authenticate, restore.getJob);
 router.get('/restores/:id/events', authenticate, restore.streamJob); // SSE
