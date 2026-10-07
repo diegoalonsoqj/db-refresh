@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
-import { useTheme } from '../theme/ThemeContext.jsx';
+import ThemeToggle from './ThemeToggle.jsx';
 import ChangePasswordModal from './ChangePasswordModal.jsx';
 import {
   IconDashboard, IconHistory, IconSchedule, IconCatalog, IconUsers,
   IconAudit, IconSettings, IconKey, IconLogout, BrandLogo,
-  IconChevronLeft, IconChevronDown, IconLock, IconSun, IconMoon,
+  IconChevronLeft, IconChevronDown, IconLock,
 } from './icons.jsx';
 
 const COLLAPSE_KEY = 'dbrefresh.sidebarCollapsed';
@@ -104,17 +104,6 @@ function UserMenu({ onChangePassword }) {
   );
 }
 
-/** Alterna claro/oscuro con la paleta actual (la misma preferencia que Ajustes > Apariencia). */
-function ThemeToggle() {
-  const { isDark, setMode } = useTheme();
-  const label = isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro';
-  return (
-    <button type="button" className="header-icon-btn" onClick={() => setMode(isDark ? 'light' : 'dark')} title={label} aria-label={label}>
-      {isDark ? <IconSun /> : <IconMoon />}
-    </button>
-  );
-}
-
 export default function Layout() {
   const { user } = useAuth();
   const { pathname } = useLocation();
@@ -153,7 +142,7 @@ export default function Layout() {
         <div className="sidebar-head">
           <div className="brand">
             <BrandLogo />
-            <span className="brand-text">db-refresh</span>
+            <span className="brand-text">DBRefresh</span>
           </div>
         </div>
 
