@@ -5,6 +5,8 @@ import { useList } from '../../hooks/useList.js';
 import Modal from '../../components/Modal.jsx';
 import LinkBucketsModal from './LinkBucketsModal.jsx';
 import ScriptsModal from './ScriptsModal.jsx';
+import { useConfirm } from '../../components/ConfirmDialog.jsx';
+import { useToast } from '../../components/Toast.jsx';
 
 const ENGINES = ['sqlserver', 'postgres', 'mysql'];
 const DEFAULT_PORTS = { sqlserver: 1433, postgres: 5432, mysql: 3306 };
@@ -18,6 +20,8 @@ function TestResult({ result }) {
 }
 
 export default function InstancesPanel({ projects, buckets }) {
+  const confirm = useConfirm();
+  const toast = useToast();
   const { data: instances, error, reload } = useList('/instances');
   const { data: credentials } = useList('/credentials');
   const [editing, setEditing] = useState(null);
@@ -75,9 +79,9 @@ export default function InstancesPanel({ projects, buckets }) {
   };
 
   const remove = async (i) => {
-    if (!confirm(`¿Eliminar la instancia ${i.instance_name}?`)) return;
+    if (!(await confirm({ message: `¿Eliminar la instancia ${i.instance_name}?`, confirmLabel: 'Eliminar', danger: true }))) return;
     try { await api.del(`/instances/${i.id}`); await reload(); }
-    catch (err) { alert(err.message); }
+    catch (err) { toast.error(err.message); }
   };
 
   if (error) return <div className="alert error">{error}</div>;

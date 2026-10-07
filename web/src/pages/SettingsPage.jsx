@@ -427,8 +427,6 @@ export default function SettingsPage() {
 
   return (
     <div>
-      <h2>Ajustes</h2>
-
       <div className="settings-layout">
         <nav className="settings-nav">
           {sections.map((s) => (

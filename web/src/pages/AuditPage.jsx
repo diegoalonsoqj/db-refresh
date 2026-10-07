@@ -14,7 +14,6 @@ export default function AuditPage() {
 
   return (
     <div>
-      <h2>Auditoría</h2>
       <p className="muted small">Últimas {entries.length} acciones sensibles.</p>
       <table className="table">
         <thead><tr><th>Fecha</th><th>Actor</th><th>Acción</th><th>Entidad</th><th>IP</th><th>Status</th></tr></thead>

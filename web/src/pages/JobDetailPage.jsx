@@ -4,6 +4,7 @@ import { api } from '../api/client.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import { IconArrowLeft, IconClose } from '../components/icons.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
+import { useConfirm } from '../components/ConfirmDialog.jsx';
 
 const LEVEL_LABEL = { info: 'INFO', warning: 'WARN', error: 'ERROR' };
 // Los eventos antiguos se guardaron con emojis y separadores '===': se limpian al mostrarlos.
@@ -14,6 +15,7 @@ const cleanMessage = (m) =>
 const TERMINAL = new Set(['succeeded', 'failed', 'cancelled']);
 
 export default function JobDetailPage() {
+  const confirm = useConfirm();
   const { id } = useParams();
   const [job, setJob] = useState(null);
   const [events, setEvents] = useState([]);
@@ -65,7 +67,7 @@ export default function JobDetailPage() {
         'La BD que se esté restaurando en ese momento puede quedar vacía o incompleta; ' +
         'las siguientes no se tocarán y no se ejecutarán los post-scripts.'
       : '¿Cancelar este restore? Aún no ha empezado: no se modificará ninguna BD.';
-    if (!confirm(msg)) return;
+    if (!(await confirm({ title: 'Cancelar restore', message: msg, confirmLabel: 'Cancelar restore', danger: true }))) return;
     setCancelling(true);
     setCancelError(null);
     try {

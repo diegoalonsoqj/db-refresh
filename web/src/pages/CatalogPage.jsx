@@ -20,7 +20,6 @@ export default function CatalogPage() {
 
   return (
     <div>
-      <h2>Catálogo GCP</h2>
       <div className="tabs">
         {TABS.map((t) => (
           <button key={t.key} className={tab === t.key ? 'active' : ''} onClick={() => setTab(t.key)}>

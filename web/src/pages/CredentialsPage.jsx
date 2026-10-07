@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { api } from '../api/client.js';
 import { useList } from '../hooks/useList.js';
 import Modal from '../components/Modal.jsx';
+import { useConfirm } from '../components/ConfirmDialog.jsx';
+import { useToast } from '../components/Toast.jsx';
 
 // Credenciales SQL reutilizables: las usan las instancias (IP privada + credencial)
 // para ejecutar scripts pre/post. La contraseña nunca vuelve del servidor.
@@ -14,6 +16,8 @@ const engineLabel = (k) => ENGINES.find((e) => e.key === k)?.label ?? k;
 const empty = { name: '', engine: 'sqlserver', username: '', secretKind: 'stored', password: '', secretRef: '', description: '' };
 
 export default function CredentialsPage() {
+  const confirm = useConfirm();
+  const toast = useToast();
   const { data: creds, error, reload } = useList('/credentials');
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(empty);
@@ -43,9 +47,9 @@ export default function CredentialsPage() {
   };
 
   const remove = async (c) => {
-    if (!confirm(`¿Eliminar la credencial "${c.name}"?`)) return;
+    if (!(await confirm({ message: `¿Eliminar la credencial "${c.name}"?`, confirmLabel: 'Eliminar', danger: true }))) return;
     try { await api.del(`/credentials/${c.id}`); await reload(); }
-    catch (err) { alert(err.message); }
+    catch (err) { toast.error(err.message); }
   };
 
   // Al editar una credencial guardada, la contraseña es opcional (vacía = sin cambios).
@@ -53,7 +57,6 @@ export default function CredentialsPage() {
 
   return (
     <div>
-      <h2>Credenciales SQL</h2>
       <p className="muted small">
         Usuario y contraseña con los que la app se conecta a las instancias (por IP privada) para ejecutar
         scripts pre/post. Una credencial puede usarse en varias instancias del mismo motor. Las contraseñas se
