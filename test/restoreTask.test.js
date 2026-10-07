@@ -114,3 +114,16 @@ test('afterRun: una vez se desactiva; recurrente calcula la siguiente; cron roto
   assert.equal(rec.isActive, true);
   assert.deepEqual(afterRun({ schedule_mode: 'recurring', cron_expr: 'x', timezone: LIMA }, now), { nextRunAt: null, isActive: false });
 });
+
+test('validateTaskMapping: método nativo admite alcance por esquema y formatos .tar/.sql; import no', () => {
+  const rows = validateTaskMapping('postgres', [
+    { source: 'latest', pattern: 'app_*.tar', targetDb: 'app', scope: 'schema', schemaName: 'ventas' },
+  ], 'native');
+  assert.equal(rows[0].scope, 'schema');
+  assert.equal(rows[0].schemaName, 'ventas');
+  assert.equal(rows[0].pattern, 'app_*.tar');
+  // Por esquema solo con el nativo; el nativo no lee .bak; el nativo solo en PostgreSQL.
+  assert.throws(() => validateTaskMapping('postgres', [{ source: 'latest', pattern: 'app_*.tar', targetDb: 'app', scope: 'schema', schemaName: 'v' }]), ValidationError);
+  assert.throws(() => validateTaskMapping('postgres', [{ source: 'fixed', backupFile: 'a.bak', targetDb: 'app' }], 'native'), ValidationError);
+  assert.throws(() => validateTaskMapping('sqlserver', [{ source: 'fixed', backupFile: 'a.bak', targetDb: 'app' }], 'native'), ValidationError);
+});

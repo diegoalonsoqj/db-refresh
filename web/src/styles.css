@@ -600,6 +600,8 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 .task-folder { display: flex; flex-direction: column; gap: .5rem; padding: .75rem; border: 1px solid var(--border); border-radius: 8px; }
 .task-rows td { vertical-align: top; }
 .task-rows select, .task-rows input:not([type="checkbox"]) { width: 100%; }
+.task-rows td:first-child select { min-width: 11.5rem; }
+.task-rows td:nth-child(2) { min-width: 20rem; }
 .warn-text { color: var(--warn-text); }
 
 /* --- Detalle del job --- */

@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthContext.jsx';
 import { useTheme } from '../theme/ThemeContext.jsx';
 import ChangePasswordModal from './ChangePasswordModal.jsx';
 import {
-  IconHistory, IconLaunch, IconSchedule, IconCatalog, IconUsers,
+  IconHistory, IconSchedule, IconCatalog, IconUsers,
   IconAudit, IconSettings, IconKey, IconLogout, BrandLogo,
   IconChevronLeft, IconChevronDown, IconLock, IconSun, IconMoon,
 } from './icons.jsx';
@@ -126,8 +126,7 @@ export default function Layout() {
 
   const items = [
     { to: '/jobs', label: 'Historial', title: 'Historial de restauraciones', Icon: IconHistory, show: true },
-    { to: '/launch', label: 'Lanzar restore', title: 'Lanzar restauración', Icon: IconLaunch, show: canLaunch },
-    { to: '/schedules', label: 'Programadas', title: 'Tareas de restore', Icon: IconSchedule, show: canLaunch },
+    { to: '/tasks', label: 'Tareas de restore', title: 'Tareas de restore', Icon: IconSchedule, show: canLaunch },
     { to: '/catalog', label: 'Catálogo', title: 'Catálogo GCP', Icon: IconCatalog, show: isAdmin },
     { to: '/credentials', label: 'Credenciales', title: 'Credenciales SQL', Icon: IconLock, show: isAdmin },
     { to: '/users', label: 'Usuarios', Icon: IconUsers, show: isAdmin },

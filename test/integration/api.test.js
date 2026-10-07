@@ -553,6 +553,9 @@ test('tareas de restore: CRUD, programación (una vez / recurrente / sin), reser
     assert.equal(created.data.instance_name, 'itest-task');
     assert.equal(created.data.mapping[0].pattern, 'Ventas_PRD_*.bak');
     assert.equal(created.data.mapping[1].backupFile, 'fijo.bak');
+    assert.equal(created.data.method, 'import');
+    // El nativo es solo PostgreSQL (y exige conexión SQL): en SQL Server, 422.
+    assert.equal((await req('POST', '/schedules', { cookie, body: { ...body, method: 'native' } })).status, 422);
 
     // Una vez: futura -> activa con next_run_at; pasada -> 422.
     const future = new Date(Date.now() + 2 * 86400e3);

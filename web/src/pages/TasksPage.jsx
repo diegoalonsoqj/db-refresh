@@ -8,7 +8,6 @@ import { IconDelete, IconEdit, IconPlay, IconSchedule } from '../components/icon
 import { useConfirm } from '../components/ConfirmDialog.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { describeSchedule, fmtInZone } from '../lib/schedule.js';
-import TaskModal from './schedules/TaskModal.jsx';
 import ScheduleModal from './schedules/ScheduleModal.jsx';
 
 /** Origen de los backups de una tarea, relativo al bucket. */
@@ -18,17 +17,16 @@ function folderOf(t) {
 }
 
 /**
- * Tareas de restore (modelo de db-keeper): se define la tarea (qué restaurar) y
- * luego se programa (una vez o recurrente) con el icono de calendario. También
- * se pueden crear desde Lanzar restore con «Guardar como tarea».
+ * Tareas de restore (modelo de db-keeper): primero se define y guarda la tarea
+ * (qué restaurar, en /tasks/new) y desde aquí se ejecuta ahora o se programa
+ * (una vez o recurrente) con el icono de calendario.
  */
-export default function SchedulesPage() {
+export default function TasksPage() {
   const confirm = useConfirm();
   const toast = useToast();
   const navigate = useNavigate();
   const { data: tasks, error, reload } = useList('/schedules');
   const { data: instances } = useList('/instances');
-  const [editing, setEditing] = useState(null); // null | {} (nueva) | tarea
   const [scheduling, setScheduling] = useState(null);
 
   const remove = async (t) => {
@@ -52,8 +50,8 @@ export default function SchedulesPage() {
 
   return (
     <div className="page-fill">
-      <PageHead info={`${tasks.length} tarea(s) · crea la tarea y prográmala con el icono de calendario`}>
-        <NewButton onClick={() => setEditing({})} disabled={!instances?.length}>Nueva tarea</NewButton>
+      <PageHead info={`${tasks.length} tarea(s) · ejecútala ahora o prográmala con el icono de calendario`}>
+        <NewButton onClick={() => navigate('/tasks/new')} disabled={!instances?.length}>Nueva tarea</NewButton>
       </PageHead>
       <div className="table-wrap">
         <table className="table">
@@ -62,13 +60,13 @@ export default function SchedulesPage() {
           </thead>
           <tbody>
             {tasks.length === 0 && (
-              <tr><td colSpan="7" className="muted">Sin tareas. Créala aquí o desde Lanzar restore → «Guardar como tarea».</td></tr>
+              <tr><td colSpan="7" className="muted">Sin tareas. Crea una con «Nueva tarea»: se define qué restaurar y luego se ejecuta o se programa desde aquí.</td></tr>
             )}
             {tasks.map((t) => (
               <tr key={t.id}>
                 <td>
                   <div>{t.name}</div>
-                  <div className="muted small">{t.project_id} / {t.instance_name} ({t.engine})</div>
+                  <div className="muted small">{t.project_id} / {t.instance_name} ({t.engine}{t.method === 'native' ? ' · nativo' : ''})</div>
                 </td>
                 <td className="mono small task-origin" title={folderOf(t)}>{folderOf(t)}</td>
                 <td>
@@ -96,7 +94,7 @@ export default function SchedulesPage() {
                 <td className="row-actions">
                   <IconButton icon={IconPlay} label="Ejecutar ahora" onClick={() => run(t)} />
                   <IconButton icon={IconSchedule} label="Programar" title="Programar (fecha y hora)" onClick={() => setScheduling(t)} />
-                  <IconButton icon={IconEdit} label="Editar" onClick={() => setEditing(t)} />
+                  <IconButton icon={IconEdit} label="Editar" onClick={() => navigate(`/tasks/${t.id}/edit`)} />
                   <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(t)} />
                 </td>
               </tr>
@@ -105,18 +103,6 @@ export default function SchedulesPage() {
         </table>
       </div>
 
-      {editing && (
-        <TaskModal
-          task={editing}
-          instances={instances ?? []}
-          onClose={() => setEditing(null)}
-          onSaved={async (saved) => {
-            setEditing(null);
-            toast.success(editing.id ? 'Tarea guardada' : `Tarea «${saved.name}» creada: prográmala con el icono de calendario`);
-            await reload();
-          }}
-        />
-      )}
       {scheduling && (
         <ScheduleModal
           task={scheduling}
