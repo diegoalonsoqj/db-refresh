@@ -366,7 +366,7 @@ export default function TaskFormPage() {
               <div className="alert warn small full">
                 Esta instancia no tiene buckets vinculados.{' '}
                 {user?.role === 'admin' ? (
-                  <>Vincúlalo en <Link to="/catalog">Catálogo</Link> → Instancias → <strong>Buckets</strong> (créalo antes en la pestaña Buckets si no existe) y márcalo como default.</>
+                  <>Vincúlalo en <Link to="/catalog">Catálogo</Link> → Instancias → Editar → pestaña <strong>Buckets</strong> (créalo antes en Catálogo → Buckets si no existe) y márcalo como default.</>
                 ) : (
                   <>Pide a un administrador que vincule el bucket de backups a la instancia en el Catálogo.</>
                 )}

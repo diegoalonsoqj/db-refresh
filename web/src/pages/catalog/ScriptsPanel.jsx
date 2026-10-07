@@ -1,6 +1,5 @@
 import { useEffect, useId, useState } from 'react';
 import { api } from '../../api/client.js';
-import Modal from '../../components/Modal.jsx';
 import { IconDelete, IconEdit, IconPlay } from '../../components/icons.jsx';
 import { IconButton, NewButton, PageHead } from '../../components/ui.jsx';
 import { useConfirm } from '../../components/ConfirmDialog.jsx';
@@ -46,7 +45,8 @@ const SQL_HINT = {
   mysql: 'Admite varias sentencias separadas por ";". Indica la BD o usa nombres calificados.',
 };
 
-export default function ScriptsModal({ instance, onClose }) {
+// Pestaña «Scripts pre/post» del formulario de la instancia.
+export default function ScriptsPanel({ instance }) {
   const confirm = useConfirm();
   const formId = useId();
   const [phase, setPhase] = useState('pre');
@@ -118,39 +118,21 @@ export default function ScriptsModal({ instance, onClose }) {
 
   const noConnection = !instance.db_host || !instance.credential_ref;
 
-  // En edición, las acciones del formulario van en el pie del modal.
-  const footer = editing ? (
-    <>
-      {editing.id && (
-        <div className="modal-foot-start">
-          <button type="button" className="btn" onClick={() => runScript(editing)}
-            disabled={noConnection || dirty || run?.pending}
-            title={dirty ? 'Guarda los cambios para ejecutar esta versión' : noConnection ? 'La instancia no tiene conexión SQL' : undefined}>
-            <IconPlay /> Ejecutar
-          </button>
-        </div>
-      )}
-      <button type="button" className="btn" onClick={() => setEditing(null)}>Cancelar</button>
-      <button type="submit" form={formId} className="btn primary" disabled={busy}>Guardar</button>
-    </>
-  ) : null;
-
   return (
-    <Modal wide title={`Scripts de ${instance.instance_name}`} onClose={onClose} footer={footer}>
+    <div className="instance-panel">
       {err && <div className="alert error">{err}</div>}
       {noConnection && (
         <div className="alert warn">
           La instancia no tiene conexión SQL (IP privada + credencial). Los scripts se pueden preparar
-          como inactivos; para activarlos, configura la conexión en la instancia.
+          como inactivos; para activarlos, configura la conexión en la pestaña Datos.
         </div>
       )}
 
       {!editing && (
-        <div className="tabs">
+        <div className="segmented" role="group" aria-label="Fase">
           {PHASES.map((p) => (
             <button key={p.key} type="button" className={phase === p.key ? 'active' : ''} onClick={() => setPhase(p.key)}>
-              {p.label}
-              {scripts && <span className="muted small"> ({scripts.filter((s) => s.phase === p.key).length})</span>}
+              {p.label}{scripts && ` (${scripts.filter((s) => s.phase === p.key).length})`}
             </button>
           ))}
         </div>
@@ -179,6 +161,17 @@ export default function ScriptsModal({ instance, onClose }) {
             Activo
           </label>
           {dirty && <div className="muted small full">Hay cambios sin guardar: se ejecuta la versión guardada, guarda antes para probar la nueva.</div>}
+          <div className="panel-actions full">
+            {editing.id && (
+              <button type="button" className="btn panel-actions-start" onClick={() => runScript(editing)}
+                disabled={noConnection || dirty || run?.pending}
+                title={dirty ? 'Guarda los cambios para ejecutar esta versión' : noConnection ? 'La instancia no tiene conexión SQL' : undefined}>
+                <IconPlay /> Ejecutar
+              </button>
+            )}
+            <button type="button" className="btn" onClick={() => setEditing(null)}>Cancelar</button>
+            <button type="submit" className="btn primary" disabled={busy}>Guardar script</button>
+          </div>
         </form>
       ) : !scripts ? <div className="muted">Cargando…</div> : (
         <>
@@ -232,6 +225,6 @@ export default function ScriptsModal({ instance, onClose }) {
           </div>
         </div>
       )}
-    </Modal>
+    </div>
   );
 }

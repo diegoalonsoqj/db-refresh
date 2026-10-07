@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
-import Modal from '../../components/Modal.jsx';
 import { IconButton } from '../../components/ui.jsx';
 import { IconStar, IconUnlink } from '../../components/icons.jsx';
 
-// Gestiona la relación N:N instancia <-> buckets: vincular, marcar default, desvincular.
-export default function LinkBucketsModal({ instance, allBuckets, onClose }) {
+// Pestaña «Buckets» del formulario de la instancia: relación N:N instancia <-> buckets
+// (vincular, marcar default, desvincular). Las tareas solo pueden usar buckets vinculados.
+export default function BucketsLinkPanel({ instance, allBuckets }) {
   const [linked, setLinked] = useState(null);
   const [toAdd, setToAdd] = useState('');
   const [asDefault, setAsDefault] = useState(false);
@@ -32,7 +32,10 @@ export default function LinkBucketsModal({ instance, allBuckets, onClose }) {
   };
 
   return (
-    <Modal wide title={`Buckets de ${instance.instance_name}`} onClose={onClose}>
+    <div className="instance-panel">
+      <p className="muted small">
+        Buckets de los que esta instancia toma los backups. El marcado como default se preselecciona al crear una tarea.
+      </p>
       {err && <div className="alert error">{err}</div>}
       {!linked ? <div className="muted">Cargando…</div> : (
         <>
@@ -55,17 +58,17 @@ export default function LinkBucketsModal({ instance, allBuckets, onClose }) {
           </table>
           </div>
 
-          <h3>Vincular bucket</h3>
+          <h4 className="panel-subtitle">Vincular bucket</h4>
           <div className="row gap">
             <select value={toAdd} onChange={(e) => setToAdd(e.target.value)} disabled={!available.length} style={{ flex: 1 }}>
               <option value="">{available.length ? '— elegir —' : '(no hay buckets disponibles)'}</option>
               {available.map((b) => <option key={b.id} value={b.id}>{b.bucket_name} · {b.project_id}</option>)}
             </select>
             <label className="checkline"><input type="checkbox" checked={asDefault} onChange={(e) => setAsDefault(e.target.checked)} /> default</label>
-            <button className="btn primary" disabled={!toAdd || busy} onClick={() => link(toAdd, asDefault)}>Vincular</button>
+            <button type="button" className="btn primary" disabled={!toAdd || busy} onClick={() => link(toAdd, asDefault)}>Vincular</button>
           </div>
         </>
       )}
-    </Modal>
+    </div>
   );
 }

@@ -92,7 +92,7 @@ export default function TasksPage() {
                   {t.last_error && <div className="task-error">{t.last_error}</div>}
                 </td>
                 <td className="row-actions">
-                  <IconButton icon={IconPlay} label="Ejecutar ahora" onClick={() => run(t)} />
+                  <IconButton icon={IconPlay} label="Ejecutar ahora" primary onClick={() => run(t)} />
                   <IconButton icon={IconSchedule} label="Programar" title="Programar (fecha y hora)" onClick={() => setScheduling(t)} />
                   <IconButton icon={IconEdit} label="Editar" onClick={() => navigate(`/tasks/${t.id}/edit`)} />
                   <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(t)} />
