@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
+import { useAuth } from '../../auth/AuthContext.jsx';
 import { IconButton } from '../../components/ui.jsx';
 import { IconStar, IconUnlink } from '../../components/icons.jsx';
 
 // Pestaña «Buckets» del formulario de la instancia: relación N:N instancia <-> buckets
 // (vincular, marcar default, desvincular). Las tareas solo pueden usar buckets vinculados.
 export default function BucketsLinkPanel({ instance, allBuckets }) {
+  const canWrite = useAuth().has('catalog:write');
   const [linked, setLinked] = useState(null);
   const [toAdd, setToAdd] = useState('');
   const [asDefault, setAsDefault] = useState(false);
@@ -49,8 +51,8 @@ export default function BucketsLinkPanel({ instance, allBuckets }) {
                   <td className="mono">{b.bucket_name}<span className="mono small muted"> {b.base_prefix}</span></td>
                   <td>{b.is_default ? <span className="pill on">default</span> : <span className="muted small">—</span>}</td>
                   <td className="row-actions">
-                    {!b.is_default && <IconButton icon={IconStar} label="Hacer default" disabled={busy} onClick={() => link(b.id, true)} />}
-                    <IconButton icon={IconUnlink} label="Desvincular" danger disabled={busy} onClick={() => unlink(b.id)} />
+                    {canWrite && !b.is_default && <IconButton icon={IconStar} label="Hacer default" disabled={busy} onClick={() => link(b.id, true)} />}
+                    {canWrite && <IconButton icon={IconUnlink} label="Desvincular" danger disabled={busy} onClick={() => unlink(b.id)} />}
                   </td>
                 </tr>
               ))}
@@ -58,15 +60,15 @@ export default function BucketsLinkPanel({ instance, allBuckets }) {
           </table>
           </div>
 
-          <h4 className="panel-subtitle">Vincular bucket</h4>
-          <div className="row gap">
+          {canWrite && <h4 className="panel-subtitle">Vincular bucket</h4>}
+          {canWrite && <div className="row gap">
             <select value={toAdd} onChange={(e) => setToAdd(e.target.value)} disabled={!available.length} style={{ flex: 1 }}>
               <option value="">{available.length ? '— elegir —' : '(no hay buckets disponibles)'}</option>
               {available.map((b) => <option key={b.id} value={b.id}>{b.bucket_name} · {b.project_id}</option>)}
             </select>
             <label className="checkline"><input type="checkbox" checked={asDefault} onChange={(e) => setAsDefault(e.target.checked)} /> default</label>
             <button type="button" className="btn primary" disabled={!toAdd || busy} onClick={() => link(toAdd, asDefault)}>Vincular</button>
-          </div>
+          </div>}
         </>
       )}
     </div>

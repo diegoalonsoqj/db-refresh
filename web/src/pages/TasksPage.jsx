@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client.js';
+import { useAuth } from '../auth/AuthContext.jsx';
 import { useList } from '../hooks/useList.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import { IconButton, NewButton, PageHead } from '../components/ui.jsx';
@@ -22,6 +23,7 @@ function folderOf(t) {
  * (una vez o recurrente) con el icono de calendario.
  */
 export default function TasksPage() {
+  const { has } = useAuth();
   const confirm = useConfirm();
   const toast = useToast();
   const navigate = useNavigate();
@@ -51,7 +53,7 @@ export default function TasksPage() {
   return (
     <div className="page-fill">
       <PageHead info={`${tasks.length} tarea(s) · ejecútala ahora o prográmala con el icono de calendario`}>
-        <NewButton onClick={() => navigate('/tasks/new')} disabled={!instances?.length}>Nueva tarea</NewButton>
+        {has('tasks:write') && <NewButton onClick={() => navigate('/tasks/new')} disabled={!instances?.length}>Nueva tarea</NewButton>}
       </PageHead>
       <div className="table-wrap">
         <table className="table">
@@ -92,10 +94,10 @@ export default function TasksPage() {
                   {t.last_error && <div className="task-error">{t.last_error}</div>}
                 </td>
                 <td className="row-actions">
-                  <IconButton icon={IconPlay} label="Ejecutar ahora" primary onClick={() => run(t)} />
-                  <IconButton icon={IconSchedule} label="Programar" title="Programar (fecha y hora)" onClick={() => setScheduling(t)} />
-                  <IconButton icon={IconEdit} label="Editar" onClick={() => navigate(`/tasks/${t.id}/edit`)} />
-                  <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(t)} />
+                  {has('tasks:run') && <IconButton icon={IconPlay} label="Ejecutar ahora" primary onClick={() => run(t)} />}
+                  {has('tasks:schedule') && <IconButton icon={IconSchedule} label="Programar" title="Programar (fecha y hora)" onClick={() => setScheduling(t)} />}
+                  {has('tasks:write') && <IconButton icon={IconEdit} label="Editar" onClick={() => navigate(`/tasks/${t.id}/edit`)} />}
+                  {has('tasks:write') && <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(t)} />}
                 </td>
               </tr>
             ))}

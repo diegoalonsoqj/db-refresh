@@ -23,8 +23,8 @@ export default function JobDetailPage() {
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState(null);
   const logRef = useRef(null);
-  const { user } = useAuth();
-  const canCancel = user && ['operator', 'admin'].includes(user.role);
+  const { has } = useAuth();
+  const canCancel = has('jobs:cancel');
 
   // Estado del job: refresca cada 3s hasta que sea terminal (item statuses).
   useEffect(() => {

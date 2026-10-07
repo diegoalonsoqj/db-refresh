@@ -801,3 +801,5 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 .dash-empty { padding: 0 1rem 1rem; margin: 0; }
 .dash-system { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
 .nowrap { white-space: nowrap; }
+/* Agrupa campos para deshabilitarlos (solo lectura sin permiso) sin romper la rejilla. */
+.form-fieldset { display: contents; border: 0; padding: 0; margin: 0; }

@@ -11,11 +11,14 @@ import {
 
 const COLLAPSE_KEY = 'dbrefresh.sidebarCollapsed';
 
+// Nombre visible de los roles de sistema; un rol personalizado se muestra por su clave.
 const ROLE_LABEL = {
+  superadmin: 'Superadmin',
   admin: 'Administrador',
   operator: 'Operador',
   viewer: 'Solo lectura',
 };
+export const roleLabel = (key) => ROLE_LABEL[key] ?? key;
 
 /** Iniciales para el avatar por defecto. */
 function initialsOf(name) {
@@ -71,7 +74,7 @@ function UserMenu({ onChangePassword }) {
         <span className="avatar">{initialsOf(name)}</span>
         <span className="user-id">
           <strong>{name}</strong>
-          <small>{ROLE_LABEL[user.role] ?? user.role}</small>
+          <small>{(user.roles ?? []).map(roleLabel).join(' · ') || 'Sin rol'}</small>
         </span>
         <span className={`chevron ${open ? 'up' : ''}`}><IconChevronDown /></span>
       </button>
@@ -105,24 +108,22 @@ function UserMenu({ onChangePassword }) {
 }
 
 export default function Layout() {
-  const { user } = useAuth();
+  const { has } = useAuth();
   const { pathname } = useLocation();
   const [showPwd, setShowPwd] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1');
 
-  const canLaunch = user && ['operator', 'admin'].includes(user.role);
-  const isAdmin = user?.role === 'admin';
-
+  // Cada sección aparece si el usuario tiene su permiso de lectura (RBAC, como db-keeper).
   const items = [
-    { to: '/dashboard', label: 'Panel', title: 'Panel', Icon: IconDashboard, show: true },
-    { to: '/jobs', label: 'Historial', title: 'Historial de restauraciones', Icon: IconHistory, show: true },
-    { to: '/tasks', label: 'Tareas de restore', title: 'Tareas de restore', Icon: IconSchedule, show: canLaunch },
-    { to: '/catalog', label: 'Catálogo', title: 'Catálogo GCP', Icon: IconCatalog, show: isAdmin },
-    { to: '/credentials', label: 'Credenciales', title: 'Credenciales SQL', Icon: IconLock, show: isAdmin },
-    { to: '/users', label: 'Usuarios', Icon: IconUsers, show: isAdmin },
-    { to: '/audit', label: 'Auditoría', Icon: IconAudit, show: isAdmin },
-    { to: '/settings', label: 'Ajustes', Icon: IconSettings, show: true },
-  ].filter((i) => i.show);
+    { to: '/dashboard', label: 'Panel', title: 'Panel', Icon: IconDashboard },
+    { to: '/jobs', label: 'Historial', title: 'Historial de restauraciones', Icon: IconHistory, perm: 'jobs:read' },
+    { to: '/tasks', label: 'Tareas de restore', title: 'Tareas de restore', Icon: IconSchedule, perm: 'tasks:read' },
+    { to: '/catalog', label: 'Catálogo', title: 'Catálogo GCP', Icon: IconCatalog, perm: 'catalog:read' },
+    { to: '/credentials', label: 'Credenciales', title: 'Credenciales SQL', Icon: IconLock, perm: 'credentials:read' },
+    { to: '/users', label: 'Usuarios', Icon: IconUsers, perm: 'users:read' },
+    { to: '/audit', label: 'Auditoría', Icon: IconAudit, perm: 'audit:read' },
+    { to: '/settings', label: 'Ajustes', Icon: IconSettings },
+  ].filter((i) => !i.perm || has(i.perm));
 
   // Título del módulo activo en el header (patrón de db-keeper); /jobs/:id cae en Historial.
   const active = items.find((i) => pathname === i.to || pathname.startsWith(`${i.to}/`));

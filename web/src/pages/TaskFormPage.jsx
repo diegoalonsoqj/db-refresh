@@ -33,7 +33,7 @@ const newRow = (patch = {}) => ({
 export default function TaskFormPage() {
   const { id } = useParams(); // edición si viene id
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { has } = useAuth();
   const toast = useToast();
   // Tarea a cargar en edición: se aplica a medida que llegan instancia, buckets y carpeta.
   const init = useRef(null);
@@ -365,7 +365,7 @@ export default function TaskFormPage() {
             {instanceId && buckets?.length === 0 && (
               <div className="alert warn small full">
                 Esta instancia no tiene buckets vinculados.{' '}
-                {user?.role === 'admin' ? (
+                {has('catalog:write') ? (
                   <>Vincúlalo en <Link to="/catalog">Catálogo</Link> → Instancias → Editar → pestaña <strong>Buckets</strong> (créalo antes en Catálogo → Buckets si no existe) y márcalo como default.</>
                 ) : (
                   <>Pide a un administrador que vincule el bucket de backups a la instancia en el Catálogo.</>
@@ -471,7 +471,7 @@ export default function TaskFormPage() {
               <div className="muted small" title={logins.reason}>
                 Corrección de usuarios huérfanos no disponible (sin conexión SQL a la instancia). El restore no la
                 necesita: se hace por el API de GCP.
-                {user?.role === 'admin' && <> Para usarla, revisa la IP privada y la credencial en <Link to="/catalog">Catálogo</Link> → Instancias.</>}
+                {has('catalog:write') && <> Para usarla, revisa la IP privada y la credencial en <Link to="/catalog">Catálogo</Link> → Instancias.</>}
               </div>
             )}
             {orphansOn && orphansReady && rows.length > 1 && (

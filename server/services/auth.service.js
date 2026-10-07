@@ -16,7 +16,6 @@ import {
 } from '../data/repositories/users.repo.js';
 import { getAdRuntimeConfig } from './settings.service.js';
 import { getUserAccess } from '../data/repositories/rbac.repo.js';
-import { legacyRole } from '../domain/permissions.js';
 import { AuthError, ValidationError } from '../domain/errors.js';
 import { logger } from '../lib/logger.js';
 
@@ -70,13 +69,10 @@ export async function login({ username, email, password }) {
   return { user: await withAccess(user), token };
 }
 
-/**
- * Usuario público + sus roles y permisos efectivos (RBAC). `role` es el rol
- * heredado (admin | operator | viewer) derivado de los permisos, para la UI anterior.
- */
+/** Usuario público + sus roles y permisos efectivos (RBAC): la UI decide con `has(permiso)`. */
 async function withAccess(user) {
   const { roles, permissions } = await getUserAccess(user.id);
-  return { ...user, roles, permissions: [...permissions].sort(), role: legacyRole(permissions) };
+  return { ...user, roles, permissions: [...permissions].sort() };
 }
 
 /** Usuario público actual a partir del id del token (revalida contra la BD). */

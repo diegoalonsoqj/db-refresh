@@ -98,7 +98,9 @@ test('login correcto setea cookie y /auth/me devuelve el usuario', async (t) => 
   const me = await req('GET', '/auth/me', { cookie });
   assert.equal(me.status, 200);
   assert.equal(me.data.user.email, ADMIN);
-  assert.equal(me.data.user.role, 'admin');
+  assert.deepEqual(me.data.user.roles, ['superadmin']);
+  assert.ok(me.data.user.permissions.includes('roles:write'));
+  assert.equal(me.data.user.role, undefined); // sin rol heredado: la UI usa permisos
 });
 
 test('sin sesión, una ruta protegida responde 401', async (t) => {
@@ -642,11 +644,9 @@ test('RBAC: permisos en /auth/me, matriz de acceso por rol y roles personalizado
     const meAdmin = await req('GET', '/auth/me', { cookie: admin.cookie });
     assert.deepEqual(meAdmin.data.user.roles, ['superadmin']);
     assert.equal(meAdmin.data.user.permissions.length, perms.data.length);
-    assert.equal(meAdmin.data.user.role, 'admin'); // rol heredado para la UI anterior
     const meViewer = await req('GET', '/auth/me', { cookie: viewer.cookie });
     assert.ok(meViewer.data.user.permissions.includes('jobs:read'));
     assert.ok(!meViewer.data.user.permissions.includes('tasks:write'));
-    assert.equal(meViewer.data.user.role, 'viewer');
 
     // Matriz: viewer lee tareas e historial; no escribe ni ve usuarios/roles/credenciales.
     assert.equal((await req('GET', '/schedules', { cookie: viewer.cookie })).status, 200);

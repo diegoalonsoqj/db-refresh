@@ -54,7 +54,7 @@ const AD_EMPTY = {
   searchBase: '', userFilter: '(sAMAccountName={{username}})', tlsRejectUnauthorized: true,
 };
 
-function AdSection({ data, onReload }) {
+function AdSection({ data, onReload, canWrite }) {
   const [form, setForm] = useState(AD_EMPTY);
   const [msg, setMsg] = useState(null);
   const [test, setTest] = useState(null);
@@ -190,7 +190,8 @@ function AdSection({ data, onReload }) {
         )}
 
         <div className="row gap">
-          <button className="btn primary" disabled={busy}>Guardar</button>
+          <button className="btn primary" disabled={busy || !canWrite}>Guardar</button>
+          {!canWrite && <span className="muted small">Solo lectura: modificar requiere el permiso settings:write.</span>}
         </div>
         <ResultLine result={msg} />
 
@@ -214,7 +215,7 @@ function AdSection({ data, onReload }) {
           </Field>
         </div>
         <div className="row gap">
-          <button type="button" className="btn" onClick={doTest} disabled={busy || !testUser.trim() || !testPass}>
+          <button type="button" className="btn" onClick={doTest} disabled={busy || !canWrite || !testUser.trim() || !testPass}>
             {busy ? 'Probando…' : 'Probar'}
           </button>
         </div>
@@ -227,7 +228,7 @@ function AdSection({ data, onReload }) {
   );
 }
 
-function GcpSection({ data, onReload }) {
+function GcpSection({ data, onReload, canWrite }) {
   const [json, setJson] = useState('');
   const [msg, setMsg] = useState(null);
   const [test, setTest] = useState(null);
@@ -282,8 +283,9 @@ function GcpSection({ data, onReload }) {
       </Field>
 
       <div className="row gap">
-        <button className="btn primary" disabled={busy || !json.trim()}>Guardar</button>
-        <button type="button" className="btn" onClick={doTest} disabled={busy}>Probar credenciales</button>
+        <button className="btn primary" disabled={busy || !canWrite || !json.trim()}>Guardar</button>
+        <button type="button" className="btn" onClick={doTest} disabled={busy || !canWrite}>Probar credenciales</button>
+        {!canWrite && <span className="muted small">Solo lectura: modificar requiere el permiso settings:write.</span>}
       </div>
       <ResultLine result={msg} />
       <ResultLine result={test} />
@@ -404,26 +406,28 @@ function SystemSection() {
 
 const SECTIONS = [
   { id: 'appearance', label: 'Apariencia' },
-  { id: 'ad', label: 'AD / LDAP', admin: true },
-  { id: 'gcp', label: 'GCP', admin: true },
-  { id: 'system', label: 'Sistema', admin: true },
+  { id: 'ad', label: 'AD / LDAP', perm: 'settings:read' },
+  { id: 'gcp', label: 'GCP', perm: 'settings:read' },
+  { id: 'system', label: 'Sistema', perm: 'settings:read' },
 ];
 
 export default function SettingsPage() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const { has } = useAuth();
+  // Apariencia es de todos; AD, GCP y Sistema se ven con settings:read y se cambian con settings:write.
+  const canRead = has('settings:read');
+  const canWrite = has('settings:write');
   const [section, setSection] = useState('appearance');
   const [ad, setAd] = useState(null);
   const [gcp, setGcp] = useState(null);
 
   // Los estados viven aquí (no en cada sección) para que la nav pueda mostrar
-  // de un vistazo qué está configurado y qué no. Solo admin: la API lo exige.
+  // de un vistazo qué está configurado y qué no.
   const loadAd = () => api.get('/settings/ad').then(setAd);
   const loadGcp = () => api.get('/settings/gcp').then(setGcp);
-  useEffect(() => { if (isAdmin) { loadAd(); loadGcp(); } }, [isAdmin]);
+  useEffect(() => { if (canRead) { loadAd(); loadGcp(); } }, [canRead]);
 
   const status = { ad: Boolean(ad?.enabled && ad?.url), gcp: Boolean(gcp?.configured) };
-  const sections = SECTIONS.filter((s) => isAdmin || !s.admin);
+  const sections = SECTIONS.filter((s) => !s.perm || has(s.perm));
 
   return (
     <div>
@@ -449,9 +453,9 @@ export default function SettingsPage() {
 
         <div className="settings-content">
           {section === 'appearance' && <AppearanceSection />}
-          {isAdmin && section === 'ad' && <AdSection data={ad} onReload={loadAd} />}
-          {isAdmin && section === 'gcp' && <GcpSection data={gcp} onReload={loadGcp} />}
-          {isAdmin && section === 'system' && <SystemSection />}
+          {canRead && section === 'ad' && <AdSection data={ad} onReload={loadAd} canWrite={canWrite} />}
+          {canRead && section === 'gcp' && <GcpSection data={gcp} onReload={loadGcp} canWrite={canWrite} />}
+          {canRead && section === 'system' && <SystemSection />}
         </div>
       </div>
     </div>

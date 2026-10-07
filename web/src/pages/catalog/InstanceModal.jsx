@@ -4,6 +4,7 @@ import { api } from '../../api/client.js';
 import Modal from '../../components/Modal.jsx';
 import { IconPlug } from '../../components/icons.jsx';
 import { useToast } from '../../components/Toast.jsx';
+import { useAuth } from '../../auth/AuthContext.jsx';
 import BucketsLinkPanel from './BucketsLinkPanel.jsx';
 import ScriptsPanel from './ScriptsPanel.jsx';
 
@@ -37,6 +38,8 @@ const formOf = (i, projects) => (i?.id ? {
  */
 export default function InstanceModal({ instance: initial, projects, buckets, credentials, onClose, onSaved }) {
   const toast = useToast();
+  const { has } = useAuth();
+  const canWrite = has('catalog:write');
   const formId = useId();
   const [instance, setInstance] = useState(initial?.id ? initial : null);
   const [tab, setTab] = useState('data');
@@ -78,7 +81,10 @@ export default function InstanceModal({ instance: initial, projects, buckets, cr
     } catch (err) { setFormTest({ ok: false, error: err.message }); }
   };
 
-  const footer = tab === 'data' ? (
+  // Pestañas visibles: Scripts solo con scripts:read. Sin catalog:write, Datos es de solo lectura.
+  const tabs = TABS.filter((t) => t.key !== 'scripts' || has('scripts:read'));
+
+  const footer = tab === 'data' && canWrite ? (
     <>
       <div className="modal-foot-start">
         <button type="button" className="btn" onClick={testForm}
@@ -94,7 +100,7 @@ export default function InstanceModal({ instance: initial, projects, buckets, cr
   return (
     <Modal size="lg" title={instance ? `Instancia ${instance.instance_name}` : 'Nueva instancia'} onClose={onClose} footer={footer}>
       <div className="tabs">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button key={t.key} type="button" className={tab === t.key ? 'active' : ''} onClick={() => setTab(t.key)}
             disabled={t.key !== 'data' && !instance}
             title={t.key !== 'data' && !instance ? 'Guarda antes los datos de la instancia' : undefined}>
@@ -105,6 +111,7 @@ export default function InstanceModal({ instance: initial, projects, buckets, cr
 
       {tab === 'data' && (
         <form id={formId} className="form-grid" onSubmit={save}>
+          <fieldset className="form-fieldset full" disabled={!canWrite}>
           <label>Proyecto
             <select value={form.projectRef} onChange={set('projectRef')} required>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.project_id}</option>)}
@@ -127,6 +134,10 @@ export default function InstanceModal({ instance: initial, projects, buckets, cr
             <select value={form.credentialRef} onChange={set('credentialRef')}>
               <option value="">{engineCreds.length ? '— sin credencial —' : `(no hay credenciales de ${form.engine})`}</option>
               {engineCreds.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.username})</option>)}
+                {/* Sin permiso para ver credenciales, la actual se muestra por su nombre. */}
+                {form.credentialRef && !engineCreds.some((c) => c.id === form.credentialRef) && (
+                  <option value={form.credentialRef}>{initial?.credential_name ?? 'credencial asignada'}</option>
+                )}
             </select>
             <span className="field-hint">Se gestionan en <Link to="/credentials">Credenciales</Link>.</span>
           </label>
@@ -135,6 +146,7 @@ export default function InstanceModal({ instance: initial, projects, buckets, cr
             <input type="checkbox" checked={form.isActive} onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))} />
             Activo
           </label>
+          </fieldset>
           {formErr && <div className="alert error full">{formErr}</div>}
           {!instance && (
             <div className="muted small full">Al guardar podrás vincular sus buckets y definir sus scripts pre/post en las otras pestañas.</div>

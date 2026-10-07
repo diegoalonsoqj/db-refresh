@@ -27,14 +27,14 @@ export default function App() {
         {/* Página de inicio: el Panel (como db-keeper). */}
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/jobs" element={<JobsPage />} />
-        <Route path="/jobs/:id" element={<JobDetailPage />} />
+        <Route path="/jobs" element={<RequireAuth perm="jobs:read"><JobsPage /></RequireAuth>} />
+        <Route path="/jobs/:id" element={<RequireAuth perm="jobs:read"><JobDetailPage /></RequireAuth>} />
         {/* Tareas de restore (modelo de db-keeper): se definen y guardan, y desde la
             lista se ejecutan o se programan. /launch y /schedules son las rutas antiguas. */}
         <Route
           path="/tasks"
           element={
-            <RequireAuth roles={['operator', 'admin']}>
+            <RequireAuth perm="tasks:read">
               <TasksPage />
             </RequireAuth>
           }
@@ -42,7 +42,7 @@ export default function App() {
         <Route
           path="/tasks/new"
           element={
-            <RequireAuth roles={['operator', 'admin']}>
+            <RequireAuth perm="tasks:write">
               <TaskFormPage />
             </RequireAuth>
           }
@@ -50,7 +50,7 @@ export default function App() {
         <Route
           path="/tasks/:id/edit"
           element={
-            <RequireAuth roles={['operator', 'admin']}>
+            <RequireAuth perm="tasks:write">
               <TaskFormPage />
             </RequireAuth>
           }
@@ -60,7 +60,7 @@ export default function App() {
         <Route
           path="/catalog"
           element={
-            <RequireAuth roles={['admin']}>
+            <RequireAuth perm="catalog:read">
               <CatalogPage />
             </RequireAuth>
           }
@@ -68,7 +68,7 @@ export default function App() {
         <Route
           path="/credentials"
           element={
-            <RequireAuth roles={['admin']}>
+            <RequireAuth perm="credentials:read">
               <CredentialsPage />
             </RequireAuth>
           }
@@ -78,7 +78,7 @@ export default function App() {
         <Route
           path="/users"
           element={
-            <RequireAuth roles={['admin']}>
+            <RequireAuth perm="users:read">
               <UsersPage />
             </RequireAuth>
           }
@@ -86,7 +86,7 @@ export default function App() {
         <Route
           path="/audit"
           element={
-            <RequireAuth roles={['admin']}>
+            <RequireAuth perm="audit:read">
               <AuditPage />
             </RequireAuth>
           }

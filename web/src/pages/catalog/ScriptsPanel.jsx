@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { api } from '../../api/client.js';
+import { useAuth } from '../../auth/AuthContext.jsx';
 import { IconDelete, IconEdit, IconPlay } from '../../components/icons.jsx';
 import { IconButton, NewButton, PageHead } from '../../components/ui.jsx';
 import { useConfirm } from '../../components/ConfirmDialog.jsx';
@@ -47,6 +48,9 @@ const SQL_HINT = {
 
 // Pestaña «Scripts pre/post» del formulario de la instancia.
 export default function ScriptsPanel({ instance }) {
+  const { has } = useAuth();
+  const canWrite = has('scripts:write');
+  const canRun = has('scripts:run');
   const confirm = useConfirm();
   const formId = useId();
   const [phase, setPhase] = useState('pre');
@@ -162,7 +166,7 @@ export default function ScriptsPanel({ instance }) {
           </label>
           {dirty && <div className="muted small full">Hay cambios sin guardar: se ejecuta la versión guardada, guarda antes para probar la nueva.</div>}
           <div className="panel-actions full">
-            {editing.id && (
+            {editing.id && canRun && (
               <button type="button" className="btn panel-actions-start" onClick={() => runScript(editing)}
                 disabled={noConnection || dirty || run?.pending}
                 title={dirty ? 'Guarda los cambios para ejecutar esta versión' : noConnection ? 'La instancia no tiene conexión SQL' : undefined}>
@@ -177,7 +181,7 @@ export default function ScriptsPanel({ instance }) {
         <>
           <p className="muted small">{PHASE_HELP[phase]}</p>
           <PageHead>
-            <NewButton onClick={openNew}>Nuevo {phaseInfo.one}</NewButton>
+            {canWrite && <NewButton onClick={openNew}>Nuevo {phaseInfo.one}</NewButton>}
           </PageHead>
           <div className="table-wrap">
           <table className="table">
@@ -191,10 +195,10 @@ export default function ScriptsPanel({ instance }) {
                   <td className="mono small">{s.database_name ?? <span className="muted">{DB_DEFAULT[instance.engine] ?? '—'}</span>}</td>
                   <td><span className={`pill ${s.is_active ? 'on' : ''}`}>{s.is_active ? 'sí' : 'no'}</span></td>
                   <td className="row-actions">
-                    <IconButton icon={IconPlay} label="Ejecutar" disabled={busy || noConnection || run?.pending} onClick={() => runScript(s)}
-                      title={noConnection ? 'La instancia no tiene conexión SQL' : 'Ejecutar ahora en la instancia'} />
-                    <IconButton icon={IconEdit} label="Editar" disabled={busy} onClick={() => openEdit(s)} />
-                    <IconButton icon={IconDelete} label="Eliminar" danger disabled={busy} onClick={() => remove(s)} />
+                    {canRun && <IconButton icon={IconPlay} label="Ejecutar" disabled={busy || noConnection || run?.pending} onClick={() => runScript(s)}
+                      title={noConnection ? 'La instancia no tiene conexión SQL' : 'Ejecutar ahora en la instancia'} />}
+                    {canWrite && <IconButton icon={IconEdit} label="Editar" disabled={busy} onClick={() => openEdit(s)} />}
+                    {canWrite && <IconButton icon={IconDelete} label="Eliminar" danger disabled={busy} onClick={() => remove(s)} />}
                   </td>
                 </tr>
               ))}

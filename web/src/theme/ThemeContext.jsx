@@ -67,7 +67,7 @@ export function ThemeProvider({ children }) {
     const root = document.documentElement;
     root.dataset.theme = pref.theme;
     root.dataset.mode = isDark ? 'dark' : 'light';
-    // La barra del navegador (móvil) sigue el color primario del tema.
+    // La barra del navegador en celulares sigue el color primario del tema.
     const primary = getComputedStyle(root).getPropertyValue('--primary').trim();
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', primary);
   }, [pref.theme, isDark]);

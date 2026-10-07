@@ -14,7 +14,8 @@ const empty = { authSource: 'local', email: '', username: '', fullName: '', role
 export default function UsersPage() {
   const confirm = useConfirm();
   const toast = useToast();
-  const { user: me } = useAuth();
+  const { user: me, has } = useAuth();
+  const canWrite = has('users:write');
   const { data: users, error, reload } = useList('/users');
   const { data: ad } = useList('/settings/ad');
   const [creating, setCreating] = useState(false);
@@ -68,7 +69,7 @@ export default function UsersPage() {
   return (
     <div className="page-fill">
       <PageHead info={`${users.length} usuario(s)`}>
-        <NewButton onClick={() => { setForm(empty); setCreating(true); setFormErr(null); }}>Nuevo usuario</NewButton>
+        {canWrite && <NewButton onClick={() => { setForm(empty); setCreating(true); setFormErr(null); }}>Nuevo usuario</NewButton>}
       </PageHead>
       <div className="table-wrap">
       <table className="table">
@@ -83,22 +84,22 @@ export default function UsersPage() {
               </td>
               <td>{u.full_name}</td>
               <td>
-                <select value={u.roles?.[0] ?? ''} onChange={(e) => patch(u, { roles: [e.target.value] })}>
+                <select value={u.roles?.[0] ?? ''} onChange={(e) => patch(u, { roles: [e.target.value] })} disabled={!canWrite}>
                   {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                 </select>
               </td>
               <td>{u.auth_source === 'ad' ? 'AD' : 'local'}</td>
               <td>
-                <button className={`pill ${u.is_active ? 'on' : ''}`} style={{ cursor: 'pointer', border: 'none' }}
-                  onClick={() => patch(u, { isActive: !u.is_active })}>
+                <button className={`pill ${u.is_active ? 'on' : ''}`} style={{ cursor: canWrite ? 'pointer' : 'default', border: 'none' }}
+                  disabled={!canWrite} onClick={() => patch(u, { isActive: !u.is_active })}>
                   {u.is_active ? 'sí' : 'no'}
                 </button>
               </td>
               <td className="row-actions">
                 {u.auth_source === 'local' && (
-                  <IconButton icon={IconKey} label="Restablecer contraseña" onClick={() => setPwd({ user: u, password: '', error: null })} />
+                  canWrite && <IconButton icon={IconKey} label="Restablecer contraseña" onClick={() => setPwd({ user: u, password: '', error: null })} />
                 )}
-                <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(u)} disabled={u.id === me.id} />
+                {has('users:delete') && <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(u)} disabled={u.id === me.id} />}
               </td>
             </tr>
           ))}

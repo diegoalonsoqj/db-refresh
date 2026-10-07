@@ -27,17 +27,6 @@ export function unknownKeys(wanted, known) {
   return wanted.filter((k) => !set.has(k));
 }
 
-/**
- * Rol «heredado» (admin | operator | viewer) derivado de los permisos, para la UI
- * anterior al RBAC mientras se migra a `has(permiso)`.
- */
-export function legacyRole(permissions) {
-  const p = new Set(permissions);
-  if (p.has('users:write') || p.has('settings:write')) return 'admin';
-  if (p.has('tasks:run') || p.has('tasks:write')) return 'operator';
-  return 'viewer';
-}
-
 /** ¿Tiene todos los permisos pedidos? */
 export function hasAll(granted, required) {
   const set = granted instanceof Set ? granted : new Set(granted);

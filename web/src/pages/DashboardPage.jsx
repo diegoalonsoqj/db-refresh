@@ -16,8 +16,9 @@ const fmt = (iso) => (iso ? new Date(iso).toLocaleString() : '—');
  * últimos restores y próximas ejecuciones programadas. Se refresca solo.
  */
 export default function DashboardPage() {
-  const { user } = useAuth();
-  const canTasks = user && ['operator', 'admin'].includes(user.role);
+  const { has } = useAuth();
+  const canTasks = has('tasks:read');
+  const canJobs = has('jobs:read');
   const [data, setData] = useState(null);
   const [health, setHealth] = useState(null);
   const [error, setError] = useState(null);
@@ -64,7 +65,7 @@ export default function DashboardPage() {
         <div className="card flush">
           <div className="card-head">
             <h3>Últimos restores</h3>
-            <Link to="/jobs" className="small">Ver historial</Link>
+            {canJobs && <Link to="/jobs" className="small">Ver historial</Link>}
           </div>
           {data.recent.length === 0 ? (
             <p className="muted small dash-empty">Todavía no hay restores.</p>
@@ -74,7 +75,7 @@ export default function DashboardPage() {
                 {data.recent.map((j) => (
                   <tr key={j.id}>
                     <td>
-                      <Link to={`/jobs/${j.id}`}>{j.instance_name}</Link>
+                      {canJobs ? <Link to={`/jobs/${j.id}`}>{j.instance_name}</Link> : j.instance_name}
                       <div className="muted small">{j.project_id} · {j.items} BD</div>
                     </td>
                     <td><StatusBadge status={j.status} warning={j.warning_message} /></td>

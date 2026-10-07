@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../../api/client.js';
+import { useAuth } from '../../auth/AuthContext.jsx';
 import { useList } from '../../hooks/useList.js';
 import { IconButton, NewButton, PageHead } from '../../components/ui.jsx';
 import { IconDelete, IconEdit, IconPlug } from '../../components/icons.jsx';
@@ -8,6 +9,7 @@ import { useConfirm } from '../../components/ConfirmDialog.jsx';
 import { useToast } from '../../components/Toast.jsx';
 
 export default function InstancesPanel({ projects, buckets }) {
+  const { has } = useAuth();
   const confirm = useConfirm();
   const toast = useToast();
   const { data: instances, error, reload } = useList('/instances');
@@ -37,7 +39,7 @@ export default function InstancesPanel({ projects, buckets }) {
   return (
     <div className="page-fill">
       <PageHead info={`${instances.length} instancia(s) · buckets y scripts pre/post se editan en el formulario de cada instancia`}>
-        <NewButton onClick={() => setEditing({})} disabled={!projects.length}>Nueva instancia</NewButton>
+        {has('catalog:write') && <NewButton onClick={() => setEditing({})} disabled={!projects.length}>Nueva instancia</NewButton>}
       </PageHead>
       <div className="table-wrap">
       <table className="table">
@@ -63,10 +65,13 @@ export default function InstancesPanel({ projects, buckets }) {
               <td>{i.project_id}</td>
               <td><span className={`pill ${i.is_active ? 'on' : ''}`}>{i.is_active ? 'sí' : 'no'}</span></td>
               <td className="row-actions">
-                <IconButton icon={IconPlug} label="Probar conexión" onClick={() => testRow(i)} disabled={!i.db_host || !i.credential_ref}
-                  title={!i.db_host || !i.credential_ref ? 'Probar conexión: la instancia no tiene conexión SQL' : undefined} />
-                <IconButton icon={IconEdit} label="Editar" title="Editar (datos, buckets y scripts pre/post)" onClick={() => setEditing(i)} />
-                <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(i)} />
+                {has('credentials:write') && <IconButton icon={IconPlug} label="Probar conexión" onClick={() => testRow(i)} disabled={!i.db_host || !i.credential_ref}
+                  title={!i.db_host || !i.credential_ref ? 'Probar conexión: la instancia no tiene conexión SQL' : undefined} />}
+                {(has('catalog:write') || has('scripts:read')) && (
+                  <IconButton icon={IconEdit} label={has('catalog:write') ? 'Editar' : 'Ver'}
+                    title={has('catalog:write') ? 'Editar (datos, buckets y scripts pre/post)' : 'Ver buckets y scripts pre/post'} onClick={() => setEditing(i)} />
+                )}
+                {has('catalog:delete') && <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(i)} />}
               </td>
             </tr>
           ))}

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../../api/client.js';
+import { useAuth } from '../../auth/AuthContext.jsx';
 import { useList } from '../../hooks/useList.js';
 import { FormModal, IconButton, NewButton, PageHead } from '../../components/ui.jsx';
 import { IconDelete, IconEdit } from '../../components/icons.jsx';
@@ -9,6 +10,7 @@ import { useToast } from '../../components/Toast.jsx';
 const empty = { projectId: '', description: '' };
 
 export default function ProjectsPanel({ onChange }) {
+  const { has } = useAuth();
   const confirm = useConfirm();
   const toast = useToast();
   const { data: projects, error, reload } = useList('/projects');
@@ -43,7 +45,7 @@ export default function ProjectsPanel({ onChange }) {
   return (
     <div className="page-fill">
       <PageHead info={`${projects.length} proyecto(s)`}>
-        <NewButton onClick={openNew}>Nuevo proyecto</NewButton>
+        {has('catalog:write') && <NewButton onClick={openNew}>Nuevo proyecto</NewButton>}
       </PageHead>
       <div className="table-wrap">
       <table className="table">
@@ -54,8 +56,8 @@ export default function ProjectsPanel({ onChange }) {
               <td className="mono">{p.project_id}</td>
               <td className="muted">{p.description}</td>
               <td className="row-actions">
-                <IconButton icon={IconEdit} label="Editar" onClick={() => openEdit(p)} />
-                <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(p)} />
+                {has('catalog:write') && <IconButton icon={IconEdit} label="Editar" onClick={() => openEdit(p)} />}
+                {has('catalog:delete') && <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(p)} />}
               </td>
             </tr>
           ))}

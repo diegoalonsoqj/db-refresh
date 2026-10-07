@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api/client.js';
+import { useAuth } from '../auth/AuthContext.jsx';
 import { useList } from '../hooks/useList.js';
 import { FormModal, IconButton, NewButton, PageHead } from '../components/ui.jsx';
 import { IconDelete, IconEdit } from '../components/icons.jsx';
@@ -17,6 +18,8 @@ const engineLabel = (k) => ENGINES.find((e) => e.key === k)?.label ?? k;
 const empty = { name: '', engine: 'sqlserver', username: '', secretKind: 'stored', password: '', secretRef: '', description: '' };
 
 export default function CredentialsPage() {
+  const { has } = useAuth();
+  const canWrite = has('credentials:write');
   const confirm = useConfirm();
   const toast = useToast();
   const { data: creds, error, reload } = useList('/credentials');
@@ -67,7 +70,7 @@ export default function CredentialsPage() {
       {!creds ? <div className="muted">Cargando…</div> : (
         <>
           <PageHead info={`${creds.length} credencial(es)`}>
-            <NewButton onClick={openNew}>Nueva credencial</NewButton>
+            {canWrite && <NewButton onClick={openNew}>Nueva credencial</NewButton>}
           </PageHead>
           <div className="table-wrap">
           <table className="table">
@@ -91,9 +94,9 @@ export default function CredentialsPage() {
                   </td>
                   <td>{c.instance_count}</td>
                   <td className="row-actions">
-                    <IconButton icon={IconEdit} label="Editar" onClick={() => openEdit(c)} />
-                    <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(c)} disabled={c.instance_count > 0}
-                      title={c.instance_count > 0 ? 'Eliminar: en uso por instancias' : undefined} />
+                    {canWrite && <IconButton icon={IconEdit} label="Editar" onClick={() => openEdit(c)} />}
+                    {canWrite && <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(c)} disabled={c.instance_count > 0}
+                      title={c.instance_count > 0 ? 'Eliminar: en uso por instancias' : undefined} />}
                   </td>
                 </tr>
               ))}

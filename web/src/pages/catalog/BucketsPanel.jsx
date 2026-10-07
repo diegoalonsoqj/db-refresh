@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../../api/client.js';
+import { useAuth } from '../../auth/AuthContext.jsx';
 import { useList } from '../../hooks/useList.js';
 import { FormModal, IconButton, NewButton, PageHead } from '../../components/ui.jsx';
 import { IconDelete, IconEdit } from '../../components/icons.jsx';
@@ -9,6 +10,7 @@ import { useToast } from '../../components/Toast.jsx';
 const empty = { projectRef: '', bucketName: '', basePrefix: '', description: '', isActive: true };
 
 export default function BucketsPanel({ projects, onChange }) {
+  const { has } = useAuth();
   const confirm = useConfirm();
   const toast = useToast();
   const { data: buckets, error, reload } = useList('/buckets');
@@ -46,7 +48,7 @@ export default function BucketsPanel({ projects, onChange }) {
   return (
     <div className="page-fill">
       <PageHead info={`${buckets.length} bucket(s)`}>
-        <NewButton onClick={openNew} disabled={!projects.length}>Nuevo bucket</NewButton>
+        {has('catalog:write') && <NewButton onClick={openNew} disabled={!projects.length}>Nuevo bucket</NewButton>}
       </PageHead>
       <div className="table-wrap">
       <table className="table">
@@ -59,8 +61,8 @@ export default function BucketsPanel({ projects, onChange }) {
               <td>{b.project_id}</td>
               <td><span className={`pill ${b.is_active ? 'on' : ''}`}>{b.is_active ? 'sí' : 'no'}</span></td>
               <td className="row-actions">
-                <IconButton icon={IconEdit} label="Editar" onClick={() => openEdit(b)} />
-                <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(b)} />
+                {has('catalog:write') && <IconButton icon={IconEdit} label="Editar" onClick={() => openEdit(b)} />}
+                {has('catalog:delete') && <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(b)} />}
               </td>
             </tr>
           ))}
