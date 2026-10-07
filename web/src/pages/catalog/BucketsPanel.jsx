@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { api } from '../../api/client.js';
 import { useList } from '../../hooks/useList.js';
-import Modal from '../../components/Modal.jsx';
+import { FormModal, IconButton, NewButton, PageHead } from '../../components/ui.jsx';
+import { IconDelete, IconEdit } from '../../components/icons.jsx';
 import { useConfirm } from '../../components/ConfirmDialog.jsx';
 import { useToast } from '../../components/Toast.jsx';
 
@@ -28,7 +29,7 @@ export default function BucketsPanel({ projects, onChange }) {
     try {
       if (editing.id) await api.put(`/buckets/${editing.id}`, form);
       else await api.post('/buckets', form);
-      setEditing(null); await reload(); onChange?.();
+      setEditing(null); toast.success('Guardado'); await reload(); onChange?.();
     } catch (err) { setFormErr(err.message); }
     finally { setBusy(false); }
   };
@@ -43,11 +44,11 @@ export default function BucketsPanel({ projects, onChange }) {
   if (!buckets) return <div className="muted">Cargando…</div>;
 
   return (
-    <div>
-      <div className="toolbar">
-        <span className="muted small">{buckets.length} bucket(s)</span>
-        <button className="btn primary small" onClick={openNew} disabled={!projects.length}>+ Nuevo bucket</button>
-      </div>
+    <div className="page-fill">
+      <PageHead info={`${buckets.length} bucket(s)`}>
+        <NewButton onClick={openNew} disabled={!projects.length}>Nuevo bucket</NewButton>
+      </PageHead>
+      <div className="table-wrap">
       <table className="table">
         <thead><tr><th>Bucket</th><th>Prefijo</th><th>Proyecto</th><th>Activo</th><th /></tr></thead>
         <tbody>
@@ -57,18 +58,21 @@ export default function BucketsPanel({ projects, onChange }) {
               <td className="mono small muted">{b.base_prefix}</td>
               <td>{b.project_id}</td>
               <td><span className={`pill ${b.is_active ? 'on' : ''}`}>{b.is_active ? 'sí' : 'no'}</span></td>
-              <td className="actions">
-                <button className="btn ghost small" onClick={() => openEdit(b)}>Editar</button>
-                <button className="btn ghost small" onClick={() => remove(b)}>Eliminar</button>
+              <td className="row-actions">
+                <IconButton icon={IconEdit} label="Editar" onClick={() => openEdit(b)} />
+                <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(b)} />
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
 
       {editing && (
-        <Modal title={editing.id ? 'Editar bucket' : 'Nuevo bucket'} onClose={() => setEditing(null)}>
-          <form className="stack" onSubmit={save}>
+        <FormModal
+          title={editing.id ? 'Editar bucket' : 'Nuevo bucket'}
+          onClose={() => setEditing(null)} onSubmit={save} busy={busy} error={formErr}
+        >
             <label>Proyecto
               <select value={form.projectRef} onChange={set('projectRef')} required>
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.project_id}</option>)}
@@ -76,24 +80,18 @@ export default function BucketsPanel({ projects, onChange }) {
             </label>
             <label>Nombre del bucket
               <input className="mono" value={form.bucketName} onChange={set('bucketName')} placeholder="mi-bucket" autoFocus required />
-              <span className="muted small">Solo el nombre, sin <span className="mono">gs://</span>. Si pegas la ruta completa (<span className="mono">gs://mi-bucket/carpeta</span>) se separa sola.</span>
+              <span className="field-hint">Solo el nombre, sin <span className="mono">gs://</span>. Si pegas la ruta completa (<span className="mono">gs://mi-bucket/carpeta</span>) se separa sola.</span>
             </label>
-            <label>Prefijo base (carpeta)
+            <label className="full">Prefijo base (carpeta)
               <input className="mono" value={form.basePrefix} onChange={set('basePrefix')} placeholder="carpeta/subcarpeta (opcional)" />
-              <span className="muted small">Carpeta donde están los backups. Se listan los archivos de ese nivel (no de subcarpetas). Vacío = raíz del bucket.</span>
+              <span className="field-hint">Carpeta donde están los backups. Se listan los archivos de ese nivel (no de subcarpetas). Vacío = raíz del bucket.</span>
             </label>
-            <label>Descripción<input value={form.description} onChange={set('description')} /></label>
-            <label className="checkline">
+            <label className="full">Descripción<input value={form.description} onChange={set('description')} /></label>
+            <label className="checkline full">
               <input type="checkbox" checked={form.isActive} onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))} />
               Activo
             </label>
-            {formErr && <div className="alert error">{formErr}</div>}
-            <div className="row gap">
-              <button className="btn primary" disabled={busy}>Guardar</button>
-              <button type="button" className="btn" onClick={() => setEditing(null)}>Cancelar</button>
-            </div>
-          </form>
-        </Modal>
+        </FormModal>
       )}
     </div>
   );

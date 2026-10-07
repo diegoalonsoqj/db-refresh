@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { api } from '../api/client.js';
 import { useList } from '../hooks/useList.js';
-import Modal from '../components/Modal.jsx';
+import { FormModal, IconButton, NewButton, PageHead } from '../components/ui.jsx';
+import { IconDelete, IconEdit } from '../components/icons.jsx';
 import { useConfirm } from '../components/ConfirmDialog.jsx';
 import { useToast } from '../components/Toast.jsx';
 
@@ -41,7 +42,7 @@ export default function CredentialsPage() {
     try {
       if (editing.id) await api.put(`/credentials/${editing.id}`, body);
       else await api.post('/credentials', body);
-      setEditing(null); await reload();
+      setEditing(null); toast.success('Guardado'); await reload();
     } catch (err) { setFormErr(err.message); }
     finally { setBusy(false); }
   };
@@ -56,7 +57,7 @@ export default function CredentialsPage() {
   const keepsPassword = editing?.id && editing.secret_kind === 'stored' && editing.has_password;
 
   return (
-    <div>
+    <div className="page-fill">
       <p className="muted small">
         Usuario y contraseña con los que la app se conecta a las instancias (por IP privada) para ejecutar
         scripts pre/post. Una credencial puede usarse en varias instancias del mismo motor. Las contraseñas se
@@ -65,10 +66,10 @@ export default function CredentialsPage() {
       {error && <div className="alert error">{error}</div>}
       {!creds ? <div className="muted">Cargando…</div> : (
         <>
-          <div className="toolbar">
-            <span className="muted small">{creds.length} credencial(es)</span>
-            <button className="btn primary small" onClick={openNew}>Nueva credencial</button>
-          </div>
+          <PageHead info={`${creds.length} credencial(es)`}>
+            <NewButton onClick={openNew}>Nueva credencial</NewButton>
+          </PageHead>
+          <div className="table-wrap">
           <table className="table">
             <thead>
               <tr><th>Nombre</th><th>Motor</th><th>Usuario</th><th>Contraseña</th><th>Instancias</th><th /></tr>
@@ -89,30 +90,31 @@ export default function CredentialsPage() {
                       : <span className="mono muted" title="Referencia a Secret Manager / variable de entorno">{c.secret_ref}</span>}
                   </td>
                   <td>{c.instance_count}</td>
-                  <td className="actions">
-                    <button className="btn ghost small" onClick={() => openEdit(c)}>Editar</button>
-                    <button className="btn ghost small" onClick={() => remove(c)} disabled={c.instance_count > 0}
-                      title={c.instance_count > 0 ? 'En uso por instancias' : undefined}>Eliminar</button>
+                  <td className="row-actions">
+                    <IconButton icon={IconEdit} label="Editar" onClick={() => openEdit(c)} />
+                    <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(c)} disabled={c.instance_count > 0}
+                      title={c.instance_count > 0 ? 'Eliminar: en uso por instancias' : undefined} />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         </>
       )}
 
       {editing && (
-        <Modal title={editing.id ? 'Editar credencial' : 'Nueva credencial'} onClose={() => setEditing(null)}>
-          <form className="stack" onSubmit={save} autoComplete="off">
-            <label>Nombre<input value={form.name} onChange={set('name')} placeholder="p.ej. sqlserver-homologacion" autoFocus required /></label>
-            <div className="row gap" style={{ alignItems: 'flex-start' }}>
-              <label style={{ flex: 1 }}>Motor
-                <select value={form.engine} onChange={set('engine')} disabled={editing.instance_count > 0}>
-                  {ENGINES.map((e) => <option key={e.key} value={e.key}>{e.label}</option>)}
-                </select>
-              </label>
-              <label style={{ flex: 1 }}>Usuario<input className="mono" value={form.username} onChange={set('username')} required /></label>
-            </div>
+        <FormModal
+          title={editing.id ? 'Editar credencial' : 'Nueva credencial'}
+          onClose={() => setEditing(null)} onSubmit={save} busy={busy} error={formErr} autoComplete="off"
+        >
+            <label className="full">Nombre<input value={form.name} onChange={set('name')} placeholder="p.ej. sqlserver-homologacion" autoFocus required /></label>
+            <label>Motor
+              <select value={form.engine} onChange={set('engine')} disabled={editing.instance_count > 0}>
+                {ENGINES.map((e) => <option key={e.key} value={e.key}>{e.label}</option>)}
+              </select>
+            </label>
+            <label>Usuario<input className="mono" value={form.username} onChange={set('username')} required /></label>
             <label>Contraseña
               <select value={form.secretKind} onChange={set('secretKind')}>
                 <option value="stored">Guardar cifrada en la app</option>
@@ -126,22 +128,16 @@ export default function CredentialsPage() {
                   placeholder={keepsPassword ? 'Dejar vacío para conservar la actual' : ''} required={!keepsPassword} />
               </label>
             ) : (
-              <label>Referencia
+              <label className="full">Referencia
                 <input className="mono" value={form.secretRef} onChange={set('secretRef')} placeholder="sm://projects/<p>/secrets/<s>" required />
-                <span className="muted small">
+                <span className="field-hint">
                   <span className="mono">sm://projects/&lt;p&gt;/secrets/&lt;s&gt;[/versions/&lt;v&gt;]</span> (la service account necesita
                   el rol Secret Manager Secret Accessor) o <span className="mono">env:NOMBRE</span>.
                 </span>
               </label>
             )}
-            <label>Descripción<input value={form.description} onChange={set('description')} placeholder="opcional" /></label>
-            {formErr && <div className="alert error">{formErr}</div>}
-            <div className="row gap">
-              <button className="btn primary" disabled={busy}>Guardar</button>
-              <button type="button" className="btn" onClick={() => setEditing(null)}>Cancelar</button>
-            </div>
-          </form>
-        </Modal>
+            <label className="full">Descripción<input value={form.description} onChange={set('description')} placeholder="opcional" /></label>
+        </FormModal>
       )}
     </div>
   );

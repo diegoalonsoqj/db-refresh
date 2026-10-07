@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client.js';
 import { useList } from '../../hooks/useList.js';
-import Modal from '../../components/Modal.jsx';
+import { FormModal, IconButton, NewButton, PageHead } from '../../components/ui.jsx';
+import { IconDelete, IconEdit, IconLink, IconPlug, IconScript } from '../../components/icons.jsx';
 import LinkBucketsModal from './LinkBucketsModal.jsx';
 import ScriptsModal from './ScriptsModal.jsx';
 import { useConfirm } from '../../components/ConfirmDialog.jsx';
@@ -56,7 +57,7 @@ export default function InstancesPanel({ projects, buckets }) {
     try {
       if (editing.id) await api.put(`/instances/${editing.id}`, body);
       else await api.post('/instances', body);
-      setEditing(null); await reload();
+      setEditing(null); toast.success('Guardado'); await reload();
     } catch (err) { setFormErr(err.message); }
     finally { setBusy(false); }
   };
@@ -88,11 +89,11 @@ export default function InstancesPanel({ projects, buckets }) {
   if (!instances) return <div className="muted">Cargando…</div>;
 
   return (
-    <div>
-      <div className="toolbar">
-        <span className="muted small">{instances.length} instancia(s)</span>
-        <button className="btn primary small" onClick={openNew} disabled={!projects.length}>Nueva instancia</button>
-      </div>
+    <div className="page-fill">
+      <PageHead info={`${instances.length} instancia(s)`}>
+        <NewButton onClick={openNew} disabled={!projects.length}>Nueva instancia</NewButton>
+      </PageHead>
+      <div className="table-wrap">
       <table className="table">
         <thead><tr><th>Instancia</th><th>Motor</th><th>Conexión SQL</th><th>Proyecto</th><th>Activo</th><th /></tr></thead>
         <tbody>
@@ -115,64 +116,60 @@ export default function InstancesPanel({ projects, buckets }) {
               </td>
               <td>{i.project_id}</td>
               <td><span className={`pill ${i.is_active ? 'on' : ''}`}>{i.is_active ? 'sí' : 'no'}</span></td>
-              <td className="actions">
-                <button className="btn ghost small" onClick={() => testRow(i)} disabled={!i.db_host || !i.credential_ref}>Probar conexión</button>
-                <button className="btn ghost small" onClick={() => setLinkFor(i)}>Buckets</button>
-                <button className="btn ghost small" onClick={() => setScriptsFor(i)}>Scripts</button>
-                <button className="btn ghost small" onClick={() => openEdit(i)}>Editar</button>
-                <button className="btn ghost small" onClick={() => remove(i)}>Eliminar</button>
+              <td className="row-actions">
+                <IconButton icon={IconPlug} label="Probar conexión" onClick={() => testRow(i)} disabled={!i.db_host || !i.credential_ref}
+                  title={!i.db_host || !i.credential_ref ? 'Probar conexión: la instancia no tiene conexión SQL' : undefined} />
+                <IconButton icon={IconLink} label="Buckets" title="Buckets vinculados" onClick={() => setLinkFor(i)} />
+                <IconButton icon={IconScript} label="Scripts" title="Scripts pre/post" onClick={() => setScriptsFor(i)} />
+                <IconButton icon={IconEdit} label="Editar" onClick={() => openEdit(i)} />
+                <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(i)} />
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
 
       {editing && (
-        <Modal title={editing.id ? 'Editar instancia' : 'Nueva instancia'} onClose={() => setEditing(null)}>
-          <form className="stack" onSubmit={save}>
+        <FormModal
+          title={editing.id ? 'Editar instancia' : 'Nueva instancia'}
+          onClose={() => setEditing(null)} onSubmit={save} busy={busy} error={formErr}
+          actions={(
+            <button type="button" className="btn" onClick={testForm}
+              disabled={!form.dbHost.trim() || !form.credentialRef || formTest?.pending}><IconPlug /> Probar conexión</button>
+          )}
+        >
             <label>Proyecto
               <select value={form.projectRef} onChange={set('projectRef')} required>
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.project_id}</option>)}
               </select>
             </label>
-            <label>Nombre de instancia<input value={form.instanceName} onChange={set('instanceName')} autoFocus required /></label>
             <label>Motor
               <select value={form.engine} onChange={setEngine}>
                 {ENGINES.map((e) => <option key={e} value={e}>{e}</option>)}
               </select>
             </label>
-            <div className="muted small">
+            <label className="full">Nombre de instancia<input className="mono" value={form.instanceName} onChange={set('instanceName')} autoFocus required /></label>
+            <div className="form-section full">
               <strong>Conexión SQL — solo para scripts pre/post (opcional).</strong> El restore (drop + import del
               backup) usa el Cloud SQL Admin API con la service account de Ajustes y no la necesita. Indica la IP
               privada y la credencial; sin credencial la instancia no ejecuta scripts pre/post.
             </div>
-            <div className="row gap" style={{ alignItems: 'flex-start' }}>
-              <label style={{ flex: 2 }}>Host (IP privada)<input className="mono" value={form.dbHost} onChange={set('dbHost')} placeholder="10.x.x.x" /></label>
-              <label style={{ flex: 1 }}>Puerto<input type="number" value={form.dbPort} onChange={set('dbPort')} placeholder={String(DEFAULT_PORTS[form.engine])} /></label>
-            </div>
-            <label>Credencial
+            <label>Host (IP privada)<input className="mono" value={form.dbHost} onChange={set('dbHost')} placeholder="10.x.x.x" /></label>
+            <label>Puerto<input type="number" value={form.dbPort} onChange={set('dbPort')} placeholder={String(DEFAULT_PORTS[form.engine])} /></label>
+            <label className="full">Credencial
               <select value={form.credentialRef} onChange={set('credentialRef')}>
                 <option value="">{engineCreds.length ? '— sin credencial —' : `(no hay credenciales de ${form.engine})`}</option>
                 {engineCreds.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.username})</option>)}
               </select>
-              <span className="muted small">Se gestionan en <Link to="/credentials">Credenciales</Link>.</span>
+              <span className="field-hint">Se gestionan en <Link to="/credentials">Credenciales</Link>.</span>
             </label>
-            <div className="row gap">
-              <button type="button" className="btn small" onClick={testForm}
-                disabled={!form.dbHost.trim() || !form.credentialRef || formTest?.pending}>Probar conexión</button>
-            </div>
-            <TestResult result={formTest} />
-            <label className="checkline">
+            {formTest && <div className="full"><TestResult result={formTest} /></div>}
+            <label className="checkline full">
               <input type="checkbox" checked={form.isActive} onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))} />
               Activo
             </label>
-            {formErr && <div className="alert error">{formErr}</div>}
-            <div className="row gap">
-              <button className="btn primary" disabled={busy}>Guardar</button>
-              <button type="button" className="btn" onClick={() => setEditing(null)}>Cancelar</button>
-            </div>
-          </form>
-        </Modal>
+        </FormModal>
       )}
 
       {scriptsFor && <ScriptsModal instance={scriptsFor} onClose={() => setScriptsFor(null)} />}

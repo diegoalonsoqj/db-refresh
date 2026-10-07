@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { api } from '../api/client.js';
 import { useList } from '../hooks/useList.js';
 import { useAuth } from '../auth/AuthContext.jsx';
-import Modal from '../components/Modal.jsx';
+import { FormModal, IconButton, NewButton, PageHead } from '../components/ui.jsx';
+import { IconDelete, IconKey } from '../components/icons.jsx';
 import { useConfirm } from '../components/ConfirmDialog.jsx';
 import { useToast } from '../components/Toast.jsx';
 
@@ -19,6 +20,8 @@ export default function UsersPage() {
   const [form, setForm] = useState(empty);
   const [formErr, setFormErr] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Restablecer contraseña de un usuario local: { user, password, error } o null.
+  const [pwd, setPwd] = useState(null);
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
   const isAd = form.authSource === 'ad';
@@ -29,7 +32,7 @@ export default function UsersPage() {
     const body = isAd
       ? { authSource: 'ad', username: form.username, email: form.email || undefined, fullName: form.fullName, role: form.role }
       : { authSource: 'local', email: form.email, fullName: form.fullName, role: form.role, password: form.password };
-    try { await api.post('/users', body); setCreating(false); setForm(empty); await reload(); }
+    try { await api.post('/users', body); setCreating(false); setForm(empty); toast.success('Usuario creado'); await reload(); }
     catch (err) { setFormErr(err.message); }
     finally { setBusy(false); }
   };
@@ -41,11 +44,15 @@ export default function UsersPage() {
 
   const label = (u) => u.email ?? u.username;
 
-  const resetPwd = async (u) => {
-    const password = prompt(`Nuevo password para ${label(u)} (mín. 10):`);
-    if (!password) return;
-    try { await api.post(`/users/${u.id}/reset-password`, { password }); toast.success('Password actualizado'); }
-    catch (err) { toast.error(err.message); }
+  const resetPwd = async (e) => {
+    e.preventDefault();
+    if (!pwd.password) return;
+    setBusy(true);
+    try {
+      await api.post(`/users/${pwd.user.id}/reset-password`, { password: pwd.password });
+      setPwd(null); toast.success('Password actualizado');
+    } catch (err) { setPwd((p) => ({ ...p, error: err.message })); }
+    finally { setBusy(false); }
   };
 
   const remove = async (u) => {
@@ -58,10 +65,11 @@ export default function UsersPage() {
   if (!users) return <div className="muted">Cargando…</div>;
 
   return (
-    <div>
-      <div className="page-head">
-        <button className="btn primary small" onClick={() => { setForm(empty); setCreating(true); setFormErr(null); }}>+ Nuevo usuario</button>
-      </div>
+    <div className="page-fill">
+      <PageHead info={`${users.length} usuario(s)`}>
+        <NewButton onClick={() => { setForm(empty); setCreating(true); setFormErr(null); }}>Nuevo usuario</NewButton>
+      </PageHead>
+      <div className="table-wrap">
       <table className="table">
         <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Tipo</th><th>Activo</th><th /></tr></thead>
         <tbody>
@@ -85,28 +93,35 @@ export default function UsersPage() {
                   {u.is_active ? 'sí' : 'no'}
                 </button>
               </td>
-              <td className="actions">
-                {u.auth_source === 'local' && <button className="btn ghost small" onClick={() => resetPwd(u)}>Reset pwd</button>}
-                <button className="btn ghost small" onClick={() => remove(u)} disabled={u.id === me.id}>Eliminar</button>
+              <td className="row-actions">
+                {u.auth_source === 'local' && (
+                  <IconButton icon={IconKey} label="Restablecer contraseña" onClick={() => setPwd({ user: u, password: '', error: null })} />
+                )}
+                <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(u)} disabled={u.id === me.id} />
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
 
       {creating && (
-        <Modal title="Nuevo usuario" onClose={() => setCreating(false)}>
-          <form className="stack" onSubmit={create}>
+        <FormModal title="Nuevo usuario" onClose={() => setCreating(false)} onSubmit={create} busy={busy} error={formErr} submitLabel="Crear">
             <label>Tipo
               <select value={form.authSource} onChange={set('authSource')}>
                 <option value="local">Local (contraseña en db-refresh)</option>
                 <option value="ad">Active Directory</option>
               </select>
             </label>
+            <label>Rol
+              <select value={form.role} onChange={set('role')}>
+                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </label>
             {isAd ? (
               <>
                 {!adReady && (
-                  <div className="alert warn small">
+                  <div className="alert warn small full">
                     AD no está habilitado en Ajustes: puedes crear el usuario, pero no podrá entrar hasta configurarlo.
                   </div>
                 )}
@@ -120,24 +135,23 @@ export default function UsersPage() {
                 </label>
               </>
             ) : (
-              <label>Email<input type="email" value={form.email} onChange={set('email')} autoFocus required /></label>
+              <>
+                <label>Email<input type="email" value={form.email} onChange={set('email')} autoFocus required /></label>
+                <label>Password (mín. 10)<input type="password" value={form.password} onChange={set('password')} autoComplete="new-password" required /></label>
+              </>
             )}
-            <label>Nombre<input value={form.fullName} onChange={set('fullName')} /></label>
-            <label>Rol
-              <select value={form.role} onChange={set('role')}>
-                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </label>
-            {!isAd && (
-              <label>Password (mín. 10)<input type="password" value={form.password} onChange={set('password')} required /></label>
-            )}
-            {formErr && <div className="alert error">{formErr}</div>}
-            <div className="row gap">
-              <button className="btn primary" disabled={busy}>Crear</button>
-              <button type="button" className="btn" onClick={() => setCreating(false)}>Cancelar</button>
-            </div>
-          </form>
-        </Modal>
+            <label className="full">Nombre<input value={form.fullName} onChange={set('fullName')} /></label>
+        </FormModal>
+      )}
+
+      {pwd && (
+        <FormModal title="Restablecer contraseña" size="sm" onClose={() => setPwd(null)} onSubmit={resetPwd} busy={busy} error={pwd.error}>
+          <label className="full">Nuevo password para {label(pwd.user)}
+            <input type="password" value={pwd.password} autoComplete="new-password" autoFocus required
+              onChange={(e) => setPwd((p) => ({ ...p, password: e.target.value }))} />
+            <span className="field-hint">Mínimo 10 caracteres.</span>
+          </label>
+        </FormModal>
       )}
     </div>
   );

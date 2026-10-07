@@ -19,7 +19,7 @@ export default function CatalogPage() {
   const buckets = bucketsL.data ?? [];
 
   return (
-    <div>
+    <div className="page-fill">
       <div className="tabs">
         {TABS.map((t) => (
           <button key={t.key} className={tab === t.key ? 'active' : ''} onClick={() => setTab(t.key)}>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client.js';
+import { PageHead } from '../components/ui.jsx';
 
 export default function AuditPage() {
   const [entries, setEntries] = useState(null);
@@ -13,8 +14,9 @@ export default function AuditPage() {
   if (!entries) return <div className="muted">Cargando…</div>;
 
   return (
-    <div>
-      <p className="muted small">Últimas {entries.length} acciones sensibles.</p>
+    <div className="page-fill">
+      <PageHead info={`Últimas ${entries.length} acciones sensibles.`} />
+      <div className="table-wrap">
       <table className="table">
         <thead><tr><th>Fecha</th><th>Actor</th><th>Acción</th><th>Entidad</th><th>IP</th><th>Status</th></tr></thead>
         <tbody>
@@ -30,6 +32,7 @@ export default function AuditPage() {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
