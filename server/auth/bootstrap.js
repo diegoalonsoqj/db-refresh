@@ -1,4 +1,4 @@
-// Garantiza un usuario admin base en la BD al arrancar la API, para no quedar
+// Garantiza un usuario admin base (rol superadmin) en la BD al arrancar la API, para no quedar
 // bloqueado (auth local). Idempotente: si ya existe NO toca su password (respeta
 // un cambio manual). Si fue borrado, se vuelve a crear en el próximo arranque.
 import { config } from '../config/index.js';
@@ -18,7 +18,7 @@ export async function ensureBaseAdmin() {
   }
 
   const passwordHash = await hashPassword(password);
-  await upsertLocalUser({ email, fullName: 'Administrador base', role: 'admin', passwordHash });
+  await upsertLocalUser({ email, fullName: 'Administrador base', roles: ['superadmin'], passwordHash });
   logger.warn(
     { email },
     'Admin base creado con password por defecto — cámbialo cuanto antes',

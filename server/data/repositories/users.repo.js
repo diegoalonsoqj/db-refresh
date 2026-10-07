@@ -2,8 +2,13 @@
 // El password_hash SOLO se expone a la estrategia local para verificarlo; nunca
 // se devuelve al cliente (los servicios/controladores lo omiten).
 import { query } from '../pool.js';
+import { setUserRoles } from './rbac.repo.js';
 
-const PUBLIC_COLS = `id, email, username, full_name, role, auth_source, is_active, last_login_at, created_at`;
+// `roles`: claves de sus roles (RBAC). La columna heredada `role` ya no decide el acceso.
+const PUBLIC_COLS = `id, email, username, full_name, auth_source, is_active, last_login_at, created_at,
+  (SELECT COALESCE(array_agg(r.key ORDER BY r.key), '{}')
+     FROM app_user_roles ur JOIN app_roles r ON r.id = ur.role_id
+    WHERE ur.user_id = app_users.id) AS roles`;
 
 /** Usuario por email, incluyendo password_hash y ad_dn (para autenticar). */
 export async function getUserByEmailForAuth(email) {
@@ -47,29 +52,27 @@ export async function listUsers() {
   return rows;
 }
 
-/** Crea un usuario local. Lanza (23505) si el email ya existe. */
-export async function insertLocalUser({ email, fullName, role, passwordHash }) {
+/** Crea un usuario local (sin roles: se asignan aparte). Lanza (23505) si el email ya existe. */
+export async function insertLocalUser({ email, fullName, passwordHash }) {
   const { rows } = await query(
-    `INSERT INTO app_users (email, full_name, role, auth_source, password_hash, is_active)
-          VALUES ($1, $2, $3, 'local', $4, true)
-       RETURNING ${PUBLIC_COLS}`,
-    [email, fullName ?? null, role, passwordHash],
+    `INSERT INTO app_users (email, full_name, auth_source, password_hash, is_active)
+          VALUES ($1, $2, 'local', $3, true)
+       RETURNING id`,
+    [email, fullName ?? null, passwordHash],
   );
-  return rows[0];
+  return rows[0].id;
 }
 
-/** Actualiza rol / estado / nombre (solo campos provistos). */
-export async function updateUserFields(id, { role, isActive, fullName }) {
-  const { rows } = await query(
+/** Actualiza estado / nombre (solo campos provistos). Los roles van por rbac.repo.setUserRoles. */
+export async function updateUserFields(id, { isActive, fullName }) {
+  await query(
     `UPDATE app_users
-        SET role      = COALESCE($2, role),
-            is_active = COALESCE($3, is_active),
-            full_name = COALESCE($4, full_name)
-      WHERE id = $1
-      RETURNING ${PUBLIC_COLS}`,
-    [id, role ?? null, isActive ?? null, fullName ?? null],
+        SET is_active = COALESCE($2, is_active),
+            full_name = COALESCE($3, full_name)
+      WHERE id = $1`,
+    [id, isActive ?? null, fullName ?? null],
   );
-  return rows[0] ?? null;
+  return getUserById(id);
 }
 
 /** Fija un nuevo hash de password (auth local). */
@@ -83,14 +86,14 @@ export async function deleteUser(id) {
 }
 
 /** Alta de un usuario de AD por un admin (sin password: se valida contra el directorio). */
-export async function insertAdUser({ username, email, fullName, role }) {
+export async function insertAdUser({ username, email, fullName }) {
   const { rows } = await query(
-    `INSERT INTO app_users (email, username, full_name, role, auth_source, is_active)
-          VALUES ($1, $2, $3, $4, 'ad', true)
-       RETURNING ${PUBLIC_COLS}`,
-    [email ?? null, username, fullName ?? null, role],
+    `INSERT INTO app_users (email, username, full_name, auth_source, is_active)
+          VALUES ($1, $2, $3, 'ad', true)
+       RETURNING id`,
+    [email ?? null, username, fullName ?? null],
   );
-  return rows[0];
+  return rows[0].id;
 }
 
 /**
@@ -111,21 +114,21 @@ export async function refreshAdProfile(id, { fullName, email, adDn }) {
 }
 
 /**
- * Crea o actualiza un usuario local (usado por el seed de admin). Idempotente
- * por email: si existe, actualiza hash/rol/estado.
+ * Crea o actualiza un usuario local (seed de admin y tests). Idempotente por
+ * email: si existe, actualiza hash/estado y deja exactamente esos roles.
  */
-export async function upsertLocalUser({ email, fullName, role, passwordHash }) {
+export async function upsertLocalUser({ email, fullName, roles = ['viewer'], passwordHash }) {
   const { rows } = await query(
-    `INSERT INTO app_users (email, full_name, role, auth_source, password_hash, is_active)
-          VALUES ($1, $2, $3, 'local', $4, true)
+    `INSERT INTO app_users (email, full_name, auth_source, password_hash, is_active)
+          VALUES ($1, $2, 'local', $3, true)
      ON CONFLICT (email) DO UPDATE
           SET full_name     = EXCLUDED.full_name,
-              role          = EXCLUDED.role,
               auth_source   = 'local',
               password_hash = EXCLUDED.password_hash,
               is_active     = true
-       RETURNING ${PUBLIC_COLS}`,
-    [email, fullName ?? null, role, passwordHash],
+       RETURNING id`,
+    [email, fullName ?? null, passwordHash],
   );
-  return rows[0];
+  await setUserRoles(rows[0].id, roles);
+  return getUserById(rows[0].id);
 }

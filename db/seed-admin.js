@@ -21,8 +21,8 @@ async function main() {
   }
 
   const passwordHash = await hashPassword(password);
-  const user = await upsertLocalUser({ email, fullName, role: 'admin', passwordHash });
-  logger.info({ id: user.id, email: user.email, role: user.role }, 'Admin creado/actualizado');
+  const user = await upsertLocalUser({ email, fullName, roles: ['superadmin'], passwordHash });
+  logger.info({ id: user.id, email: user.email, roles: user.roles }, 'Admin creado/actualizado');
 }
 
 main()

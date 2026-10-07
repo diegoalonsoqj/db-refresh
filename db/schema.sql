@@ -357,3 +357,105 @@ DO $$ BEGIN
   ALTER TABLE sql_credentials    ADD  CONSTRAINT sql_credentials_updated_by_fkey
     FOREIGN KEY (updated_by)   REFERENCES app_users(id) ON DELETE SET NULL;
 END $$;
+
+-- --- RBAC granular (modelo de db-keeper) ------------------------------------
+-- Permisos fijos `recurso:acción` (este catálogo es la fuente: la API valida
+-- contra esta tabla). Roles editables con su conjunto de permisos; un usuario
+-- puede tener varios roles y sus permisos son la unión. `superadmin` recibe
+-- siempre TODOS los permisos (también los que se añadan) y no se puede editar.
+-- app_users.role queda como columna heredada: ya no decide el acceso.
+CREATE TABLE IF NOT EXISTS app_permissions (
+  key         text PRIMARY KEY,
+  category    text NOT NULL,
+  description text NOT NULL,
+  sort_order  int  NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS app_roles (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  key         text NOT NULL UNIQUE,
+  name        text NOT NULL,
+  description text,
+  is_system   boolean NOT NULL DEFAULT false,
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS app_role_permissions (
+  role_id        uuid NOT NULL REFERENCES app_roles(id) ON DELETE CASCADE,
+  permission_key text NOT NULL REFERENCES app_permissions(key) ON DELETE CASCADE,
+  PRIMARY KEY (role_id, permission_key)
+);
+CREATE TABLE IF NOT EXISTS app_user_roles (
+  user_id uuid NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+  role_id uuid NOT NULL REFERENCES app_roles(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, role_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_roles_role ON app_user_roles (role_id);
+
+INSERT INTO app_permissions (key, category, description, sort_order) VALUES
+  ('users:read',        'users',       'Ver usuarios',                                        10),
+  ('users:write',       'users',       'Crear y editar usuarios, roles asignados y passwords', 11),
+  ('users:delete',      'users',       'Eliminar usuarios',                                   12),
+  ('roles:read',        'roles',       'Ver roles y permisos',                                20),
+  ('roles:write',       'roles',       'Crear y editar roles y sus permisos',                 21),
+  ('catalog:read',      'catalog',     'Ver proyectos, instancias y buckets',                 30),
+  ('catalog:write',     'catalog',     'Crear y editar proyectos, instancias y buckets',      31),
+  ('catalog:delete',    'catalog',     'Eliminar proyectos, instancias y buckets',            32),
+  ('credentials:read',  'credentials', 'Ver credenciales SQL (sin secretos)',                 40),
+  ('credentials:write', 'credentials', 'Crear, editar, probar y eliminar credenciales SQL',   41),
+  ('scripts:read',      'scripts',     'Ver scripts pre/post de las instancias',              50),
+  ('scripts:write',     'scripts',     'Crear, editar y eliminar scripts pre/post',           51),
+  ('scripts:run',       'scripts',     'Ejecutar scripts pre/post a demanda',                 52),
+  ('tasks:read',        'tasks',       'Ver tareas de restore',                               60),
+  ('tasks:write',       'tasks',       'Crear, editar y eliminar tareas de restore',          61),
+  ('tasks:run',         'tasks',       'Ejecutar tareas de restore a demanda',                62),
+  ('tasks:schedule',    'tasks',       'Programar tareas de restore',                         63),
+  ('jobs:read',         'jobs',        'Ver el historial y el detalle de los restores',       70),
+  ('jobs:cancel',       'jobs',        'Cancelar restores en curso o en cola',                71),
+  ('settings:read',     'settings',    'Ver la configuración (AD, GCP)',                      80),
+  ('settings:write',    'settings',    'Modificar y probar la configuración',                 81),
+  ('audit:read',        'audit',       'Ver el registro de auditoría',                        90)
+ON CONFLICT (key) DO UPDATE SET category = EXCLUDED.category, description = EXCLUDED.description,
+                                sort_order = EXCLUDED.sort_order;
+
+INSERT INTO app_roles (key, name, description, is_system) VALUES
+  ('superadmin', 'Superadmin', 'Control total, incluida la gestión de roles y permisos.', true),
+  ('admin',      'Admin',      'Gestiona usuarios, catálogo, credenciales, scripts, tareas y configuración.', true),
+  ('operator',   'Operador',   'Prepara, ejecuta y programa tareas de restore; ve el catálogo.', true),
+  ('viewer',     'Solo lectura', 'Acceso de solo lectura a tareas, historial y catálogo.', true)
+ON CONFLICT (key) DO NOTHING;
+
+-- superadmin: siempre todos los permisos (incluidos los nuevos).
+INSERT INTO app_role_permissions (role_id, permission_key)
+  SELECT r.id, p.key FROM app_roles r CROSS JOIN app_permissions p WHERE r.key = 'superadmin'
+ON CONFLICT DO NOTHING;
+
+-- Permisos por defecto del resto de roles de sistema: solo si el rol aún no tiene
+-- ninguno (primera vez). Después se editan desde Roles y Permisos y no se pisan.
+DO $$
+DECLARE
+  defaults jsonb := '{
+    "admin":    ["users:read","users:write","users:delete","roles:read","catalog:read","catalog:write",
+                 "catalog:delete","credentials:read","credentials:write","scripts:read","scripts:write",
+                 "scripts:run","tasks:read","tasks:write","tasks:run","tasks:schedule","jobs:read",
+                 "jobs:cancel","settings:read","settings:write","audit:read"],
+    "operator": ["catalog:read","tasks:read","tasks:write","tasks:run","tasks:schedule","jobs:read","jobs:cancel"],
+    "viewer":   ["catalog:read","tasks:read","jobs:read"]
+  }';
+  r record;
+BEGIN
+  FOR r IN SELECT id, key FROM app_roles WHERE key IN ('admin', 'operator', 'viewer') LOOP
+    IF NOT EXISTS (SELECT 1 FROM app_role_permissions WHERE role_id = r.id) THEN
+      INSERT INTO app_role_permissions (role_id, permission_key)
+        SELECT r.id, jsonb_array_elements_text(defaults -> r.key)
+      ON CONFLICT DO NOTHING;
+    END IF;
+  END LOOP;
+END $$;
+
+-- Usuarios sin roles (los existentes antes del RBAC): admin -> superadmin (conservan
+-- todo lo que podían hacer), operator -> operator, viewer -> viewer.
+INSERT INTO app_user_roles (user_id, role_id)
+  SELECT u.id, r.id
+    FROM app_users u
+    JOIN app_roles r ON r.key = CASE u.role WHEN 'admin' THEN 'superadmin' WHEN 'operator' THEN 'operator' ELSE 'viewer' END
+   WHERE NOT EXISTS (SELECT 1 FROM app_user_roles ur WHERE ur.user_id = u.id)
+ON CONFLICT DO NOTHING;

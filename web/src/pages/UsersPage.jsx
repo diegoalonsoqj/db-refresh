@@ -7,7 +7,8 @@ import { IconDelete, IconKey } from '../components/icons.jsx';
 import { useConfirm } from '../components/ConfirmDialog.jsx';
 import { useToast } from '../components/Toast.jsx';
 
-const ROLES = ['admin', 'operator', 'viewer'];
+// Roles base del RBAC (la gestión completa de roles llega con la pantalla de Roles y Permisos).
+const ROLES = ['superadmin', 'admin', 'operator', 'viewer'];
 const empty = { authSource: 'local', email: '', username: '', fullName: '', role: 'viewer', password: '' };
 
 export default function UsersPage() {
@@ -82,7 +83,7 @@ export default function UsersPage() {
               </td>
               <td>{u.full_name}</td>
               <td>
-                <select value={u.role} onChange={(e) => patch(u, { role: e.target.value })}>
+                <select value={u.roles?.[0] ?? ''} onChange={(e) => patch(u, { roles: [e.target.value] })}>
                   {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                 </select>
               </td>

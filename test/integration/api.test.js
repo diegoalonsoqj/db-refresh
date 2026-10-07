@@ -30,8 +30,8 @@ before(async () => {
     return; // sin BD: los tests se saltarán
   }
   const passwordHash = await hashPassword(PW);
-  await upsertLocalUser({ email: ADMIN, fullName: 'IT Admin', role: 'admin', passwordHash });
-  await upsertLocalUser({ email: VIEWER, fullName: 'IT Viewer', role: 'viewer', passwordHash });
+  await upsertLocalUser({ email: ADMIN, fullName: 'IT Admin', roles: ['superadmin'], passwordHash });
+  await upsertLocalUser({ email: VIEWER, fullName: 'IT Viewer', roles: ['viewer'], passwordHash });
 
   server = createApp().listen(0);
   await new Promise((r) => server.once('listening', r));
@@ -622,4 +622,91 @@ test('Panel: indicadores y listas para cualquier autenticado; sin sesión 401', 
   assert.ok('successRate' in r.data.jobs7d);
   assert.ok(Array.isArray(r.data.recent));
   assert.ok(Array.isArray(r.data.upcoming));
+});
+
+test('RBAC: permisos en /auth/me, matriz de acceso por rol y roles personalizados', async (t) => {
+  if (!dbOk) return t.skip('BD no disponible');
+  const OPERATOR = 'itest-operator@dbrefresh.test';
+  const CUSTOM = 'itest-custom@dbrefresh.test';
+  const passwordHash = await hashPassword(PW);
+  await upsertLocalUser({ email: OPERATOR, fullName: 'IT Operator', roles: ['operator'], passwordHash });
+  const customUser = await upsertLocalUser({ email: CUSTOM, fullName: 'IT Custom', roles: ['viewer'], passwordHash });
+  const admin = await login(ADMIN, PW);
+  const viewer = await login(VIEWER, PW);
+  const operator = await login(OPERATOR, PW);
+  let roleId = null;
+  try {
+    // Identidad: superadmin tiene todos los permisos del catálogo; viewer solo lectura.
+    const perms = await req('GET', '/permissions', { cookie: admin.cookie });
+    assert.equal(perms.status, 200);
+    const meAdmin = await req('GET', '/auth/me', { cookie: admin.cookie });
+    assert.deepEqual(meAdmin.data.user.roles, ['superadmin']);
+    assert.equal(meAdmin.data.user.permissions.length, perms.data.length);
+    assert.equal(meAdmin.data.user.role, 'admin'); // rol heredado para la UI anterior
+    const meViewer = await req('GET', '/auth/me', { cookie: viewer.cookie });
+    assert.ok(meViewer.data.user.permissions.includes('jobs:read'));
+    assert.ok(!meViewer.data.user.permissions.includes('tasks:write'));
+    assert.equal(meViewer.data.user.role, 'viewer');
+
+    // Matriz: viewer lee tareas e historial; no escribe ni ve usuarios/roles/credenciales.
+    assert.equal((await req('GET', '/schedules', { cookie: viewer.cookie })).status, 200);
+    assert.equal((await req('GET', '/restores', { cookie: viewer.cookie })).status, 200);
+    assert.equal((await req('GET', '/projects', { cookie: viewer.cookie })).status, 200);
+    assert.equal((await req('POST', '/schedules', { cookie: viewer.cookie, body: {} })).status, 403);
+    assert.equal((await req('GET', '/roles', { cookie: viewer.cookie })).status, 403);
+    assert.equal((await req('GET', '/credentials', { cookie: viewer.cookie })).status, 403);
+    // Operador: tareas sí (llega a la validación: 422), catálogo/usuarios/credenciales/scripts no.
+    assert.equal((await req('POST', '/schedules', { cookie: operator.cookie, body: {} })).status, 422);
+    assert.equal((await req('POST', '/projects', { cookie: operator.cookie, body: { projectId: 'x' } })).status, 403);
+    assert.equal((await req('GET', '/users', { cookie: operator.cookie })).status, 403);
+    assert.equal((await req('GET', '/settings/ad', { cookie: operator.cookie })).status, 403);
+    const forbidden = await req('GET', '/audit', { cookie: operator.cookie });
+    assert.equal(forbidden.status, 403);
+    assert.match(forbidden.data.error, /audit:read/);
+
+    // Roles de sistema: superadmin no se edita ni se borra un rol de sistema.
+    const roles = await req('GET', '/roles', { cookie: admin.cookie });
+    const byKey = Object.fromEntries(roles.data.map((r) => [r.key, r]));
+    assert.deepEqual(['superadmin', 'admin', 'operator', 'viewer'].every((k) => byKey[k]?.is_system), true);
+    assert.equal((await req('PATCH', `/roles/${byKey.superadmin.id}`, { cookie: admin.cookie, body: { permissions: [] } })).status, 403);
+    assert.equal((await req('DELETE', `/roles/${byKey.viewer.id}`, { cookie: admin.cookie })).status, 403);
+
+    // Rol personalizado: validación, alta, asignación y efecto inmediato en la identidad.
+    assert.equal((await req('POST', '/roles', { cookie: admin.cookie, body: { key: 'Mal Clave', name: 'x' } })).status, 422);
+    assert.equal((await req('POST', '/roles', { cookie: admin.cookie, body: { key: 'itest_rol', name: 'x', permissions: ['no:existe'] } })).status, 422);
+    const created = await req('POST', '/roles', { cookie: admin.cookie, body: { key: 'itest_rol', name: 'IT rol', permissions: ['jobs:read'] } });
+    assert.equal(created.status, 201);
+    roleId = created.data.id;
+    assert.deepEqual(created.data.permissions, ['jobs:read']);
+    assert.equal((await req('POST', '/roles', { cookie: admin.cookie, body: { key: 'itest_rol', name: 'dup' } })).status, 409);
+
+    const custom = await login(CUSTOM, PW);
+    assert.equal((await req('PATCH', `/users/${customUser.id}`, { cookie: admin.cookie, body: { roles: ['itest_rol'] } })).status, 200);
+    const meCustom = await req('GET', '/auth/me', { cookie: custom.cookie });
+    assert.deepEqual(meCustom.data.user.permissions, ['jobs:read']);
+    assert.equal((await req('GET', '/schedules', { cookie: custom.cookie })).status, 403); // ya no es viewer
+
+    const edited = await req('PATCH', `/roles/${roleId}`, { cookie: admin.cookie, body: { permissions: ['jobs:read', 'tasks:read'] } });
+    assert.deepEqual(edited.data.permissions.sort(), ['jobs:read', 'tasks:read']);
+    assert.equal((await req('GET', '/schedules', { cookie: custom.cookie })).status, 200); // sin re-login
+
+    // No se borra un rol asignado; roles inexistentes al asignar -> 422.
+    assert.equal((await req('DELETE', `/roles/${roleId}`, { cookie: admin.cookie })).status, 409);
+    assert.equal((await req('PATCH', `/users/${customUser.id}`, { cookie: admin.cookie, body: { roles: ['no_existe'] } })).status, 422);
+
+    // Desactivar a un usuario corta su sesión al momento.
+    await req('PATCH', `/users/${customUser.id}`, { cookie: admin.cookie, body: { isActive: false } });
+    assert.equal((await req('GET', '/auth/me', { cookie: custom.cookie })).status, 401);
+
+    // Nadie se cambia sus propios roles.
+    const self = (await req('GET', '/auth/me', { cookie: admin.cookie })).data.user;
+    assert.equal((await req('PATCH', `/users/${self.id}`, { cookie: admin.cookie, body: { roles: ['viewer'] } })).status, 422);
+
+    await req('PATCH', `/users/${customUser.id}`, { cookie: admin.cookie, body: { roles: ['viewer'], isActive: true } });
+    assert.equal((await req('DELETE', `/roles/${roleId}`, { cookie: admin.cookie })).status, 204);
+    roleId = null;
+  } finally {
+    await pool.query('DELETE FROM app_users WHERE email = ANY($1)', [[OPERATOR, CUSTOM]]);
+    if (roleId) await pool.query('DELETE FROM app_roles WHERE id = $1', [roleId]);
+  }
 });

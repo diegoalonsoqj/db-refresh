@@ -15,6 +15,8 @@ import {
   getAdUserByUsername,
 } from '../data/repositories/users.repo.js';
 import { getAdRuntimeConfig } from './settings.service.js';
+import { getUserAccess } from '../data/repositories/rbac.repo.js';
+import { legacyRole } from '../domain/permissions.js';
 import { AuthError, ValidationError } from '../domain/errors.js';
 import { logger } from '../lib/logger.js';
 
@@ -62,14 +64,24 @@ export async function login({ username, email, password }) {
   }
 
   await touchLastLogin(user.id);
-  const token = signToken({ sub: user.id, email: user.email ?? user.username, role: user.role });
+  // El token solo identifica al usuario: roles y permisos se leen de la BD en cada petición.
+  const token = signToken({ sub: user.id, email: user.email ?? user.username });
   logger.info({ userId: user.id, source: user.auth_source }, 'Login correcto');
-  return { user, token };
+  return { user: await withAccess(user), token };
+}
+
+/**
+ * Usuario público + sus roles y permisos efectivos (RBAC). `role` es el rol
+ * heredado (admin | operator | viewer) derivado de los permisos, para la UI anterior.
+ */
+async function withAccess(user) {
+  const { roles, permissions } = await getUserAccess(user.id);
+  return { ...user, roles, permissions: [...permissions].sort(), role: legacyRole(permissions) };
 }
 
 /** Usuario público actual a partir del id del token (revalida contra la BD). */
 export async function getCurrentUser(userId) {
   const user = await getUserById(userId);
   if (!user || !user.is_active) return null;
-  return user;
+  return withAccess(user);
 }
