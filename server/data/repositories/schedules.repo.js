@@ -2,7 +2,7 @@
 // mapping se guarda como jsonb: [{ source, backupFile|pattern, targetDb, ... }].
 import { query } from '../pool.js';
 
-const COLS = `s.id, s.name, s.instance_ref, s.bucket_ref, s.bucket_path, s.mapping, s.skip_sql_on_failure,
+const COLS = `s.id, s.name, s.instance_ref, s.bucket_ref, s.bucket_path, s.method, s.mapping, s.skip_sql_on_failure,
               s.schedule_mode, s.cron_expr, s.run_at, s.timezone, s.is_active,
               s.created_by, s.last_run_at, s.next_run_at, s.last_job_ref, s.last_error, s.created_at`;
 
@@ -30,11 +30,11 @@ export async function getById(id) {
 export async function createSchedule(t) {
   const { rows } = await query(
     `INSERT INTO scheduled_restores
-       (name, instance_ref, bucket_ref, bucket_path, mapping, skip_sql_on_failure, created_by,
+       (name, instance_ref, bucket_ref, bucket_path, method, mapping, skip_sql_on_failure, created_by,
         schedule_mode, is_active, timezone)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, 'none', false, $8)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, 'none', false, $9)
      RETURNING id`,
-    [t.name, t.instanceRef, t.bucketRef, t.bucketPath, JSON.stringify(t.mapping), t.skipSqlOnFailure,
+    [t.name, t.instanceRef, t.bucketRef, t.bucketPath, t.method, JSON.stringify(t.mapping), t.skipSqlOnFailure,
       t.createdBy ?? null, t.timezone],
   );
   return getById(rows[0].id);
@@ -44,10 +44,10 @@ export async function createSchedule(t) {
 export async function updateSchedule(id, t) {
   await query(
     `UPDATE scheduled_restores
-        SET name = $2, instance_ref = $3, bucket_ref = $4, bucket_path = $5,
-            mapping = $6::jsonb, skip_sql_on_failure = $7
+        SET name = $2, instance_ref = $3, bucket_ref = $4, bucket_path = $5, method = $6,
+            mapping = $7::jsonb, skip_sql_on_failure = $8
       WHERE id = $1`,
-    [id, t.name, t.instanceRef, t.bucketRef, t.bucketPath, JSON.stringify(t.mapping), t.skipSqlOnFailure],
+    [id, t.name, t.instanceRef, t.bucketRef, t.bucketPath, t.method, JSON.stringify(t.mapping), t.skipSqlOnFailure],
   );
   return getById(id);
 }

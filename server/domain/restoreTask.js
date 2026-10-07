@@ -60,7 +60,7 @@ export function suggestPattern(fileName) {
  * (`validateMapping`) y añade el origen del backup por fila.
  * @returns [{ source, backupFile|null, pattern|null, targetDb, importUser, ... }]
  */
-export function validateTaskMapping(engine, mapping) {
+export function validateTaskMapping(engine, mapping, method = 'import') {
   if (!Array.isArray(mapping) || mapping.length === 0) {
     throw new ValidationError('mapping vacío: indica al menos un backup -> BD');
   }
@@ -79,7 +79,7 @@ export function validateTaskMapping(engine, mapping) {
     ...m,
     backupFile: sources[i].source === 'latest' ? sources[i].pattern.replaceAll('*', 'x') : m?.backupFile,
   }));
-  return validateMapping(engine, asRestore, 'import').map((row, i) => ({
+  return validateMapping(engine, asRestore, method).map((row, i) => ({
     ...row,
     source: sources[i].source,
     backupFile: sources[i].source === 'fixed' ? row.backupFile : null,

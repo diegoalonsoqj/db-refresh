@@ -308,6 +308,8 @@ ALTER TABLE scheduled_restores ADD COLUMN IF NOT EXISTS last_job_ref uuid
   REFERENCES restore_jobs(id) ON DELETE SET NULL;
 -- Último fallo al disparar (p.ej. ningún backup coincide con el patrón); NULL si fue bien.
 ALTER TABLE scheduled_restores ADD COLUMN IF NOT EXISTS last_error text;
+-- Método del restore de la tarea: import (Cloud SQL Admin API) | native (pg_restore/psql, solo PostgreSQL).
+ALTER TABLE scheduled_restores ADD COLUMN IF NOT EXISTS method text NOT NULL DEFAULT 'import';
 
 -- --- Configuración de la app (settings runtime) ---------------------------
 -- Clave/valor. `value` guarda campos NO secretos (jsonb, legible en la API);

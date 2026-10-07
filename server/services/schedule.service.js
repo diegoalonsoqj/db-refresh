@@ -39,9 +39,15 @@ async function validateInput(input) {
     throw new ValidationError(`La carpeta debe estar dentro de ${base}`);
   }
 
-  const mapping = validateTaskMapping(instance.engine, input.mapping);
-  // Borrar por SQL y asignar el owner de la BD (PostgreSQL) se hacen por SQL.
-  const sqlNeed = mapping.some((m) => m.dropViaSql) ? 'El borrado de BD por SQL'
+  const method = input.method ?? 'import';
+  const mapping = validateTaskMapping(instance.engine, input.mapping, method);
+  const skipSqlOnFailure = input.skipSqlOnFailure === true;
+  if (skipSqlOnFailure && method === 'native') {
+    throw new ValidationError('«Continuar aunque falle la conexión SQL» no aplica al restore nativo: necesita la conexión para restaurar');
+  }
+  // Lo que se hace por SQL exige la conexión de la instancia (mismas reglas que al lanzar).
+  const sqlNeed = method === 'native' ? 'El restore nativo'
+    : mapping.some((m) => m.dropViaSql) ? 'El borrado de BD por SQL'
     : mapping.some((m) => m.importUser) ? 'Asignar el owner de la BD (import en PostgreSQL)' : null;
   if (sqlNeed && missingSqlCredentials(instance).length) {
     throw new ValidationError(
@@ -54,8 +60,9 @@ async function validateInput(input) {
     instanceRef: instance.id,
     bucketRef: bucket.id,
     bucketPath: bucketPath === base ? null : bucketPath,
+    method,
     mapping,
-    skipSqlOnFailure: input.skipSqlOnFailure === true,
+    skipSqlOnFailure,
   };
 }
 
@@ -118,11 +125,13 @@ export async function triggerSchedule(task, now = new Date()) {
   try {
     const bucketPath = await taskFolder(task);
     const needsListing = task.mapping.some((m) => m.source === 'latest');
-    const files = needsListing ? (await backupService.listBackups(task.instance_ref, bucketPath)).files : [];
+    const method = task.method ?? 'import';
+    const files = needsListing ? (await backupService.listBackups(task.instance_ref, bucketPath, method)).files : [];
     const job = await restoreService.launchRestore({
       instanceId: task.instance_ref,
       bucketId: task.bucket_ref,
       bucketPath,
+      method,
       mapping: resolveTaskMapping(task.mapping, files),
       skipSqlOnFailure: task.skip_sql_on_failure,
       requestedBy: task.created_by ?? null,
@@ -147,7 +156,7 @@ export async function runScheduleNow(id) {
 export async function previewSchedule(id) {
   const task = await getSchedule(id);
   const bucketPath = await taskFolder(task);
-  const { files } = await backupService.listBackups(task.instance_ref, bucketPath);
+  const { files } = await backupService.listBackups(task.instance_ref, bucketPath, task.method ?? 'import');
   const names = new Set(files.map((f) => f.fileName));
   return task.mapping.map((m) => {
     if (m.source !== 'latest') return { ...m, found: names.has(m.backupFile) };
