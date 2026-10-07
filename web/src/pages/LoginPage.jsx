@@ -39,7 +39,7 @@ export default function LoginPage() {
   return (
     <div className="login-screen">
       <form className="card login-card" onSubmit={submit}>
-        <h1 className="login-brand"><BrandLogo size={36} /> DBRefresh</h1>
+        <h1 className="login-brand"><BrandLogo size={48} /> DBRefresh</h1>
         <p className="login-tagline">Restauración, programación y monitoreo de backups en Cloud SQL</p>
 
         <label>
