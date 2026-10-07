@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext.jsx';
 import { IconAlert, IconArrowUp, IconFolder, IconLaunch, IconRefresh, IconSchedule } from '../components/icons.jsx';
 import { useToast } from '../components/Toast.jsx';
 import SaveTaskModal from './schedules/SaveTaskModal.jsx';
+import { stripBackupExt, suggestDbName } from '../lib/backupName.js';
 
 // Extensiones que lista cada motor/método (deben coincidir con acceptedExtensions del adaptador).
 const EXTENSIONS = { sqlserver: '.bak', postgres: '.sql / .gz', mysql: '.sql / .gz', native: '.tar / .sql / .sql.gz' };
@@ -151,9 +152,10 @@ export default function LaunchPage() {
       if (prev.find((r) => r.backupFile === fileName)) {
         return prev.filter((r) => r.backupFile !== fileName);
       }
-      // Sugerencia: el nombre del archivo; si coincide con una BD existente, se preselecciona esa.
-      const suggested = fileName.replace(/\.(bak|sql|gz|tar)$/gi, '');
-      const match = matchDbForFile(suggested);
+      // Si el archivo corresponde a una BD existente, se preselecciona esa; si no, se sugiere
+      // el nombre de la BD sacado del archivo (PaynovaBD_PRD_20261002_201635.sql.gz -> PaynovaBD).
+      const suggested = suggestDbName(fileName);
+      const match = matchDbForFile(stripBackupExt(fileName)) ?? findDb(suggested);
       return [...prev, {
         backupFile: fileName, targetDb: match?.name ?? suggested, isNew: !match, importUser: '',
         scope: 'database', schemaName: '', fixOrphans: false, dbOwner: '', dropViaSql: false,
