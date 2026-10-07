@@ -109,7 +109,7 @@ export default function UsersPage() {
         <FormModal title="Nuevo usuario" onClose={() => setCreating(false)} onSubmit={create} busy={busy} error={formErr} submitLabel="Crear">
             <label>Tipo
               <select value={form.authSource} onChange={set('authSource')}>
-                <option value="local">Local (contraseña en db-refresh)</option>
+                <option value="local">Local (contraseña en DBRefresh)</option>
                 <option value="ad">Active Directory</option>
               </select>
             </label>

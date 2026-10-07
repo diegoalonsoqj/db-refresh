@@ -3,7 +3,9 @@ import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { api } from '../api/client.js';
 import { BrandLogo } from '../components/icons.jsx';
+import ThemeToggle from '../components/ThemeToggle.jsx';
 
+/** Inicio de sesión (mismo diseño que db-keeper): login único local o AD, el servidor decide. */
 export default function LoginPage() {
   const { user, login } = useAuth();
   const [methods, setMethods] = useState({ local: true, ad: false });
@@ -35,19 +37,19 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="center">
-      <form className="card login" onSubmit={submit}>
-        <h1 className="login-brand"><BrandLogo /> db-refresh</h1>
-        <p className="muted">Inicia sesión para continuar</p>
+    <div className="login-screen">
+      <form className="card login-card" onSubmit={submit}>
+        <h1 className="login-brand"><BrandLogo size={36} /> DBRefresh</h1>
+        <p className="login-tagline">Restauración, programación y monitoreo de backups en Cloud SQL</p>
 
         <label>
-          {methods.ad ? 'Usuario o email' : 'Email'}
+          {methods.ad ? 'Usuario' : 'Email'}
           <input
             type="text"
             autoComplete="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder={methods.ad ? 'usuario o tu@email' : 'tu@email'}
+            placeholder={methods.ad ? 'usuario de red o email' : 'tu@email'}
             autoFocus
             required
           />
@@ -57,10 +59,15 @@ export default function LoginPage() {
         </label>
         <label>
           Contraseña
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
         </label>
         {error && <div className="alert error">{error}</div>}
-        <button className="btn primary" disabled={busy}>{busy ? 'Entrando…' : 'Entrar'}</button>
+        <button className="btn primary login-submit" disabled={busy}>{busy ? 'Entrando…' : 'Entrar'}</button>
+
+        <div className="login-foot">
+          <span>Tema claro / oscuro</span>
+          <ThemeToggle />
+        </div>
       </form>
     </div>
   );
