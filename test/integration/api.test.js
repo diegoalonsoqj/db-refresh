@@ -514,3 +514,95 @@ test('usuarios AD: alta por admin (normaliza dominio), duplicado 409, validacion
     await req('DELETE', `/users/${created.data.id}`, { cookie });
   }
 });
+
+test('tareas de restore: CRUD, programación (una vez / recurrente / sin), reserva atómica y RBAC', async (t) => {
+  if (!dbOk) return t.skip('BD no disponible');
+  const { cookie } = await login(ADMIN, PW);
+  const viewer = await login(VIEWER, PW);
+  const proj = await req('POST', '/projects', { cookie, body: { projectId: `${PROJ}-tasks` } });
+  const ids = {};
+  try {
+    ids.inst = (await req('POST', '/instances', {
+      cookie, body: { projectRef: proj.data.id, instanceName: 'itest-task', engine: 'sqlserver' },
+    })).data.id;
+    ids.bucket = (await req('POST', '/buckets', {
+      cookie, body: { projectRef: proj.data.id, bucketName: 'itest-task-bucket', basePrefix: 'homologaciones' },
+    })).data.id;
+    const body = {
+      name: 'itest tarea', instanceRef: ids.inst, bucketRef: ids.bucket,
+      bucketPath: 'gs://itest-task-bucket/homologaciones/gccspsp05',
+      mapping: [
+        { source: 'latest', pattern: 'Ventas_PRD_*.bak', targetDb: 'ventas' },
+        { source: 'fixed', backupFile: 'fijo.bak', targetDb: 'otra' },
+      ],
+    };
+
+    assert.equal((await req('POST', '/schedules', { cookie: viewer.cookie, body })).status, 403);
+    assert.equal((await req('POST', '/schedules', { cookie, body: { ...body, name: ' ' } })).status, 422);
+    assert.equal((await req('POST', '/schedules', { cookie, body: { ...body, bucketPath: 'gs://otro-bucket/x' } })).status, 422);
+    assert.equal((await req('POST', '/schedules', {
+      cookie, body: { ...body, mapping: [{ source: 'latest', pattern: '../*', targetDb: 'x' }] },
+    })).status, 422);
+
+    const created = await req('POST', '/schedules', { cookie, body });
+    assert.equal(created.status, 201);
+    ids.task = created.data.id;
+    assert.equal(created.data.name, 'itest tarea');
+    assert.equal(created.data.schedule_mode, 'none');
+    assert.equal(created.data.is_active, false);
+    assert.equal(created.data.instance_name, 'itest-task');
+    assert.equal(created.data.mapping[0].pattern, 'Ventas_PRD_*.bak');
+    assert.equal(created.data.mapping[1].backupFile, 'fijo.bak');
+
+    // Una vez: futura -> activa con next_run_at; pasada -> 422.
+    const future = new Date(Date.now() + 2 * 86400e3);
+    const wall = `${future.toISOString().slice(0, 10)}T21:00`;
+    const once = await req('PUT', `/schedules/${ids.task}/schedule`, { cookie, body: { mode: 'once', runAt: wall } });
+    assert.equal(once.status, 200);
+    assert.equal(once.data.schedule_mode, 'once');
+    assert.equal(once.data.is_active, true);
+    assert.ok(once.data.next_run_at);
+    assert.equal((await req('PUT', `/schedules/${ids.task}/schedule`, { cookie, body: { mode: 'once', runAt: '2020-01-01T10:00' } })).status, 422);
+    assert.equal((await req('PUT', `/schedules/${ids.task}/schedule`, { cookie: viewer.cookie, body: { mode: 'none' } })).status, 403);
+
+    // Recurrente: diaria 21:00 en Lima.
+    const rec = await req('PUT', `/schedules/${ids.task}/schedule`, {
+      cookie, body: { mode: 'recurring', cron: '0 21 * * *', timezone: 'America/Lima' },
+    });
+    assert.equal(rec.status, 200);
+    assert.equal(rec.data.cron_expr, '0 21 * * *');
+    assert.equal(new Date(rec.data.next_run_at).getUTCHours(), 2); // 21:00 Lima = 02:00 UTC
+    assert.equal((await req('PUT', `/schedules/${ids.task}/schedule`, { cookie, body: { mode: 'recurring', cron: 'mal' } })).status, 422);
+
+    // Editar la tarea no toca la programación.
+    const edited = await req('PUT', `/schedules/${ids.task}`, { cookie, body: { ...body, name: 'itest tarea 2' } });
+    assert.equal(edited.data.name, 'itest tarea 2');
+    assert.equal(edited.data.schedule_mode, 'recurring');
+
+    // Reserva atómica del scheduler: el segundo claim del mismo disparo no gana.
+    const schedRepo = await import('../../server/data/repositories/schedules.repo.js');
+    const due = new Date(Date.now() - 1000);
+    await pool.query('UPDATE scheduled_restores SET next_run_at = $2 WHERE id = $1', [ids.task, due]);
+    assert.ok((await schedRepo.findDue(new Date())).some((s) => s.id === ids.task));
+    const next = { lastRunAt: new Date(), nextRunAt: new Date(Date.now() + 86400e3), isActive: true };
+    assert.equal(await schedRepo.claimRun(ids.task, due, next), true);
+    assert.equal(await schedRepo.claimRun(ids.task, due, next), false);
+
+    // Sin programar.
+    const none = await req('PUT', `/schedules/${ids.task}/schedule`, { cookie, body: { mode: 'none' } });
+    assert.equal(none.data.schedule_mode, 'none');
+    assert.equal(none.data.is_active, false);
+    assert.equal(none.data.next_run_at, null);
+
+    // Lectura: cualquier autenticado; borrar: operator/admin.
+    assert.ok((await req('GET', '/schedules', { cookie: viewer.cookie })).data.some((s) => s.id === ids.task));
+    assert.equal((await req('DELETE', `/schedules/${ids.task}`, { cookie: viewer.cookie })).status, 403);
+    assert.equal((await req('DELETE', `/schedules/${ids.task}`, { cookie })).status, 204);
+    ids.task = null;
+  } finally {
+    if (ids.task) await pool.query('DELETE FROM scheduled_restores WHERE id = $1', [ids.task]);
+    if (ids.inst) await req('DELETE', `/instances/${ids.inst}`, { cookie });
+    if (ids.bucket) await req('DELETE', `/buckets/${ids.bucket}`, { cookie });
+    await req('DELETE', `/projects/${proj.data.id}`, { cookie });
+  }
+});

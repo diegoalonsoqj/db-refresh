@@ -117,6 +117,14 @@ export const config = {
     postScriptTimeoutMs: int('POST_SCRIPT_TIMEOUT_MS', 600_000),
   },
 
+  // Tareas de restore programadas (proceso scheduler).
+  scheduler: {
+    // Zona horaria por defecto de las programaciones (cada tarea puede indicar otra).
+    timezone: process.env.SCHEDULE_TIMEZONE || 'America/Lima',
+    // Cada cuánto busca programaciones vencidas.
+    pollIntervalMs: int('SCHEDULER_POLL_INTERVAL_MS', 30_000),
+  },
+
   // Restore nativo de PostgreSQL (pg_restore/psql ejecutados en este servidor).
   nativeRestore: {
     // Carpeta de los binarios (vacío = los del PATH, p.ej. postgresql-client-17 en Ubuntu).

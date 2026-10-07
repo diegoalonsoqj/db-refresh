@@ -1,49 +1,67 @@
-// Repositorio de restauraciones programadas (scheduled_restores).
-// mapping se guarda como jsonb: [{ backupFile, targetDb }, ...].
+// Repositorio de tareas de restore (scheduled_restores) y su programación.
+// mapping se guarda como jsonb: [{ source, backupFile|pattern, targetDb, ... }].
 import { query } from '../pool.js';
 
-const COLS = `id, instance_ref, bucket_ref, cron_expr, mapping, is_active,
-              created_by, last_run_at, next_run_at, created_at`;
+const COLS = `s.id, s.name, s.instance_ref, s.bucket_ref, s.bucket_path, s.mapping, s.skip_sql_on_failure,
+              s.schedule_mode, s.cron_expr, s.run_at, s.timezone, s.is_active,
+              s.created_by, s.last_run_at, s.next_run_at, s.last_job_ref, s.last_error, s.created_at`;
+
+// Para la lista: nombres de instancia/bucket y estado del último job.
+const LIST_SQL = `
+  SELECT ${COLS},
+         i.instance_name, i.engine, p.project_id, b.bucket_name, b.base_prefix,
+         j.status AS last_job_status
+    FROM scheduled_restores s
+    JOIN gcp_instances i ON i.id = s.instance_ref
+    JOIN gcp_projects  p ON p.id = i.project_ref
+    JOIN gcp_buckets   b ON b.id = s.bucket_ref
+    LEFT JOIN restore_jobs j ON j.id = s.last_job_ref`;
 
 export async function listSchedules() {
-  const { rows } = await query(`SELECT ${COLS} FROM scheduled_restores ORDER BY created_at DESC`);
-  return rows;
-}
-
-/** Solo las activas (las consume el proceso scheduler). */
-export async function listActive() {
-  const { rows } = await query(
-    `SELECT ${COLS} FROM scheduled_restores WHERE is_active ORDER BY created_at`,
-  );
+  const { rows } = await query(`${LIST_SQL} ORDER BY s.name, s.created_at`);
   return rows;
 }
 
 export async function getById(id) {
-  const { rows } = await query(`SELECT ${COLS} FROM scheduled_restores WHERE id = $1`, [id]);
+  const { rows } = await query(`${LIST_SQL} WHERE s.id = $1`, [id]);
   return rows[0] ?? null;
 }
 
-export async function createSchedule(s) {
+export async function createSchedule(t) {
   const { rows } = await query(
     `INSERT INTO scheduled_restores
-       (instance_ref, bucket_ref, cron_expr, mapping, is_active, created_by)
-     VALUES ($1, $2, $3, $4::jsonb, $5, $6)
-     RETURNING ${COLS}`,
-    [s.instanceRef, s.bucketRef, s.cronExpr, JSON.stringify(s.mapping), s.isActive ?? true, s.createdBy ?? null],
+       (name, instance_ref, bucket_ref, bucket_path, mapping, skip_sql_on_failure, created_by,
+        schedule_mode, is_active, timezone)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, 'none', false, $8)
+     RETURNING id`,
+    [t.name, t.instanceRef, t.bucketRef, t.bucketPath, JSON.stringify(t.mapping), t.skipSqlOnFailure,
+      t.createdBy ?? null, t.timezone],
   );
-  return rows[0];
+  return getById(rows[0].id);
 }
 
-export async function updateSchedule(id, s) {
-  const { rows } = await query(
+/** Edita la definición de la tarea (no toca su programación). */
+export async function updateSchedule(id, t) {
+  await query(
     `UPDATE scheduled_restores
-        SET instance_ref = $2, bucket_ref = $3, cron_expr = $4,
-            mapping = $5::jsonb, is_active = $6
-      WHERE id = $1
-      RETURNING ${COLS}`,
-    [id, s.instanceRef, s.bucketRef, s.cronExpr, JSON.stringify(s.mapping), s.isActive ?? true],
+        SET name = $2, instance_ref = $3, bucket_ref = $4, bucket_path = $5,
+            mapping = $6::jsonb, skip_sql_on_failure = $7
+      WHERE id = $1`,
+    [id, t.name, t.instanceRef, t.bucketRef, t.bucketPath, JSON.stringify(t.mapping), t.skipSqlOnFailure],
   );
-  return rows[0] ?? null;
+  return getById(id);
+}
+
+/** Fija la programación (none | once | recurring) y su próxima ejecución. */
+export async function setSchedule(id, s) {
+  await query(
+    `UPDATE scheduled_restores
+        SET schedule_mode = $2, cron_expr = $3, run_at = $4, timezone = $5,
+            next_run_at = $6, is_active = $7
+      WHERE id = $1`,
+    [id, s.mode, s.cronExpr, s.runAt, s.timezone, s.nextRunAt, s.isActive],
+  );
+  return getById(id);
 }
 
 export async function deleteSchedule(id) {
@@ -51,10 +69,50 @@ export async function deleteSchedule(id) {
   return rowCount > 0;
 }
 
-/** Marca la última ejecución (y opcionalmente la próxima). */
-export async function markRun(id, lastRunAt, nextRunAt = null) {
+/** Programaciones activas cuya próxima ejecución ya venció (las consume el scheduler). */
+export async function findDue(now) {
+  const { rows } = await query(
+    `SELECT ${COLS} FROM scheduled_restores s
+      WHERE s.is_active AND s.next_run_at IS NOT NULL AND s.next_run_at <= $1
+      ORDER BY s.next_run_at`,
+    [now],
+  );
+  return rows;
+}
+
+/** Activas sin próxima ejecución calculada (p.ej. migradas de la versión con node-cron). */
+export async function findActiveWithoutNext() {
+  const { rows } = await query(
+    `SELECT ${COLS} FROM scheduled_restores s WHERE s.is_active AND s.next_run_at IS NULL`,
+  );
+  return rows;
+}
+
+export async function setNextRun(id, nextRunAt, isActive) {
+  await query(`UPDATE scheduled_restores SET next_run_at = $2, is_active = $3 WHERE id = $1`, [id, nextRunAt, isActive]);
+}
+
+/**
+ * Reserva el disparo de forma atómica: avanza next_run_at (o desactiva) solo si
+ * sigue siendo el leído. Si otro proceso ya la tomó, no cambia nada y devuelve
+ * false: así una programación no lanza dos restores.
+ */
+export async function claimRun(id, expectedNextRunAt, { lastRunAt, nextRunAt, isActive }) {
+  const { rowCount } = await query(
+    `UPDATE scheduled_restores
+        SET last_run_at = $3, next_run_at = $4, is_active = $5
+      WHERE id = $1 AND is_active AND next_run_at = $2`,
+    [id, expectedNextRunAt, lastRunAt, nextRunAt, isActive],
+  );
+  return rowCount === 1;
+}
+
+/** Resultado de un disparo: el job encolado o el error que lo impidió. */
+export async function recordRun(id, { lastRunAt, jobId = null, error = null }) {
   await query(
-    `UPDATE scheduled_restores SET last_run_at = $2, next_run_at = $3 WHERE id = $1`,
-    [id, lastRunAt, nextRunAt],
+    `UPDATE scheduled_restores
+        SET last_run_at = $2, last_job_ref = COALESCE($3, last_job_ref), last_error = $4
+      WHERE id = $1`,
+    [id, lastRunAt, jobId, error],
   );
 }

@@ -131,5 +131,8 @@ router.get('/schedules/:id', authenticate, schedule.getSchedule);
 router.put('/schedules/:id', ...operator, schedule.updateSchedule);
 router.delete('/schedules/:id', ...operator, schedule.deleteSchedule);
 router.post('/schedules/:id/run', ...operator, schedule.runSchedule);
+// Programación de la tarea (none | once | recurring) y vista previa de los backups que tomaría hoy.
+router.put('/schedules/:id/schedule', ...operator, schedule.setTaskSchedule);
+router.get('/schedules/:id/preview', ...operator, schedule.previewSchedule);
 
 export default router;

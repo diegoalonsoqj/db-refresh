@@ -280,6 +280,35 @@ CREATE TABLE IF NOT EXISTS scheduled_restores (
 );
 CREATE INDEX IF NOT EXISTS idx_sched_active_next ON scheduled_restores (is_active, next_run_at);
 
+-- Tareas de restore (modelo de db-keeper): cada fila es una TAREA (qué restaurar)
+-- con su programación aparte: schedule_mode none | once (run_at) | recurring
+-- (cron_expr), en `timezone`. is_active = programación activa (una "once" se
+-- desactiva al dispararse). mapping: [{source fixed|latest, backupFile|pattern,
+-- targetDb, ...}]; 'latest' = el backup más reciente de la carpeta que encaje
+-- con el patrón, resuelto al disparar.
+ALTER TABLE scheduled_restores ADD COLUMN IF NOT EXISTS name text;
+UPDATE scheduled_restores SET name = 'Programación ' || left(id::text, 8) WHERE name IS NULL;
+ALTER TABLE scheduled_restores ALTER COLUMN name SET NOT NULL;
+-- Carpeta del bucket (gs://...); NULL = carpeta base del bucket (programadas antiguas).
+ALTER TABLE scheduled_restores ADD COLUMN IF NOT EXISTS bucket_path text;
+ALTER TABLE scheduled_restores ADD COLUMN IF NOT EXISTS skip_sql_on_failure boolean NOT NULL DEFAULT false;
+-- Las programadas anteriores eran recurrentes (cron): se conservan como tales.
+ALTER TABLE scheduled_restores ADD COLUMN IF NOT EXISTS schedule_mode text;
+UPDATE scheduled_restores
+   SET schedule_mode = CASE WHEN cron_expr IS NOT NULL THEN 'recurring' ELSE 'none' END
+ WHERE schedule_mode IS NULL;
+ALTER TABLE scheduled_restores ALTER COLUMN schedule_mode SET DEFAULT 'none';
+ALTER TABLE scheduled_restores ALTER COLUMN schedule_mode SET NOT NULL;
+ALTER TABLE scheduled_restores DROP CONSTRAINT IF EXISTS chk_sched_mode;
+ALTER TABLE scheduled_restores ADD CONSTRAINT chk_sched_mode CHECK (schedule_mode IN ('none', 'once', 'recurring'));
+ALTER TABLE scheduled_restores ALTER COLUMN cron_expr DROP NOT NULL;
+ALTER TABLE scheduled_restores ADD COLUMN IF NOT EXISTS run_at timestamptz;
+ALTER TABLE scheduled_restores ADD COLUMN IF NOT EXISTS timezone text NOT NULL DEFAULT 'America/Lima';
+ALTER TABLE scheduled_restores ADD COLUMN IF NOT EXISTS last_job_ref uuid
+  REFERENCES restore_jobs(id) ON DELETE SET NULL;
+-- Último fallo al disparar (p.ej. ningún backup coincide con el patrón); NULL si fue bien.
+ALTER TABLE scheduled_restores ADD COLUMN IF NOT EXISTS last_error text;
+
 -- --- Configuración de la app (settings runtime) ---------------------------
 -- Clave/valor. `value` guarda campos NO secretos (jsonb, legible en la API);
 -- `secret_enc` guarda el secreto cifrado at-rest con AES-256-GCM (la master key

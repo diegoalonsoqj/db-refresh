@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { useAuth } from '../auth/AuthContext.jsx';
-import { IconAlert, IconArrowUp, IconFolder, IconLaunch, IconRefresh } from '../components/icons.jsx';
+import { IconAlert, IconArrowUp, IconFolder, IconLaunch, IconRefresh, IconSchedule } from '../components/icons.jsx';
+import { useToast } from '../components/Toast.jsx';
+import SaveTaskModal from './schedules/SaveTaskModal.jsx';
 
 // Extensiones que lista cada motor/método (deben coincidir con acceptedExtensions del adaptador).
 const EXTENSIONS = { sqlserver: '.bak', postgres: '.sql / .gz', mysql: '.sql / .gz', native: '.tar / .sql / .sql.gz' };
@@ -17,6 +19,9 @@ function bucketPathOf(b) {
 export default function LaunchPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const toast = useToast();
+  // «Guardar como tarea»: la selección actual se guarda como tarea de restore (sin lanzar).
+  const [savingTask, setSavingTask] = useState(false);
   const [instances, setInstances] = useState([]);
   const [instanceId, setInstanceId] = useState('');
   const [buckets, setBuckets] = useState(null); // null = cargando / sin instancia
@@ -105,6 +110,8 @@ export default function LaunchPage() {
   // Solo el alcance 'BD completa' elimina la BD; por esquema solo se reemplaza ese esquema.
   const replaced = dbs ? rows.filter((r) => r.scope !== 'schema' && r.targetDb && existsDb(r.targetDb)) : [];
   const replacedSchemas = rows.filter((r) => r.scope === 'schema' && r.schemaName);
+  // Las tareas usan el import de Cloud SQL (sin alcance por esquema) y BD destino con nombre.
+  const canSaveTask = !native && rows.length > 0 && rows.every((r) => r.targetDb.trim());
 
   const loadFiles = async (isCurrent = () => true) => {
     setError(null);
@@ -525,12 +532,31 @@ export default function LaunchPage() {
           )}
 
           <div className="launch-actions">
+            <button type="button" className="btn" onClick={() => setSavingTask(true)} disabled={!canSaveTask}
+              title={native ? 'Las tareas usan el import de Cloud SQL (no el restore nativo)' : 'Guarda esta selección como tarea para programarla'}>
+              <IconSchedule size={16} /> Guardar como tarea
+            </button>
             <button className="btn primary" disabled={busy || rows.length === 0 || (native && !nativeReady) || instStatus?.running === false}>
               <IconLaunch size={16} /> {busy ? 'Encolando…' : `Restaurar ${rows.length} ${rows.length === 1 ? 'destino' : 'destinos'}`}
             </button>
           </div>
         </section>
       </form>
+
+      {savingTask && (
+        <SaveTaskModal
+          instance={instance}
+          bucketId={bucketId}
+          bucketPath={bucketPath}
+          rows={rows}
+          skipSql={skipSql}
+          onClose={() => setSavingTask(false)}
+          onSaved={(task) => {
+            setSavingTask(false);
+            toast.success(`Tarea «${task.name}» guardada. Prográmala en Programadas.`);
+          }}
+        />
+      )}
     </div>
   );
 }

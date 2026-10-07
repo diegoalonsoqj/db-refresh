@@ -592,7 +592,15 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 .card-title-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .launch-files .table { margin-top: 0; }
 .launch-files tr.selected { background: color-mix(in srgb, var(--primary) 7%, transparent); }
-.launch-actions { display: flex; justify-content: flex-end; }
+.launch-actions { display: flex; justify-content: flex-end; gap: .5rem; }
+
+/* --- Tareas de restore --- */
+.task-origin { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-error { color: var(--err-text); font-size: .76rem; max-width: 260px; margin-top: .2rem; }
+.task-folder { display: flex; flex-direction: column; gap: .5rem; padding: .75rem; border: 1px solid var(--border); border-radius: 8px; }
+.task-rows td { vertical-align: top; }
+.task-rows select, .task-rows input:not([type="checkbox"]) { width: 100%; }
+.warn-text { color: var(--warn-text); }
 
 /* --- Detalle del job --- */
 .job-detail .page-head { margin-bottom: 1rem; }
