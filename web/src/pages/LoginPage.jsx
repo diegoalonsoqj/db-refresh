@@ -43,18 +43,17 @@ export default function LoginPage() {
         <p className="login-tagline">Restauración, programación y monitoreo de backups en Cloud SQL</p>
 
         <label>
-          {methods.ad ? 'Usuario' : 'Email'}
+          Usuario
           <input
             type="text"
             autoComplete="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder={methods.ad ? 'usuario de red o email' : 'tu@email'}
             autoFocus
             required
           />
           {methods.ad && (
-            <span className="field-hint">Cuentas de Active Directory: solo tu usuario de red, sin dominio.</span>
+            <span className="field-hint">Active Directory: tu usuario de red, sin dominio. Cuentas locales: tu email.</span>
           )}
         </label>
         <label>
@@ -65,8 +64,7 @@ export default function LoginPage() {
         <button className="btn primary login-submit" disabled={busy}>{busy ? 'Entrando…' : 'Entrar'}</button>
 
         <div className="login-foot">
-          <span>Tema claro / oscuro</span>
-          <ThemeToggle />
+          <ThemeToggle className="login-theme" />
         </div>
       </form>
     </div>
