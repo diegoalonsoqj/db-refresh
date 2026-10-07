@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client.js';
 import StatusBadge from '../components/StatusBadge.jsx';
+import { PageHead } from '../components/ui.jsx';
+import { IconView } from '../components/icons.jsx';
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState(null);
@@ -22,10 +24,12 @@ export default function JobsPage() {
   if (!jobs) return <div className="muted">Cargando…</div>;
 
   return (
-    <div>
+    <div className="page-fill">
+      <PageHead info={`${jobs.length} job(s) · se actualiza cada 5 s`} />
       {jobs.length === 0 ? (
         <p className="muted">Sin jobs todavía.</p>
       ) : (
+        <div className="table-wrap">
         <table className="table">
           <thead>
             <tr><th>Estado</th><th>Instancia</th><th>Motor</th><th>Creado</th><th /></tr>
@@ -40,11 +44,14 @@ export default function JobsPage() {
                 </td>
                 <td>{j.engine}</td>
                 <td className="muted small">{new Date(j.created_at).toLocaleString()}</td>
-                <td><Link className="btn ghost small" to={`/jobs/${j.id}`}>Ver</Link></td>
+                <td className="row-actions">
+                  <Link className="icon-action" to={`/jobs/${j.id}`} title="Ver detalle" aria-label="Ver detalle"><IconView size={16} /></Link>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

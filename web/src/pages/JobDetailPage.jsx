@@ -13,6 +13,7 @@ const cleanMessage = (m) =>
   String(m).replace(EMOJI_RE, '').replace(/^[\s=]+|[\s=]+$/g, '').replace(/\s{2,}/g, ' ');
 
 const TERMINAL = new Set(['succeeded', 'failed', 'cancelled']);
+const fmtDate = (iso) => (iso ? new Date(iso).toLocaleString() : '—');
 
 export default function JobDetailPage() {
   const confirm = useConfirm();
@@ -86,24 +87,33 @@ export default function JobDetailPage() {
   const hasOwner = job.items.some((it) => it.import_user);
 
   return (
-    <div>
-      <div className="row between">
-        <h2>
-          Job <span className="mono">{job.id.slice(0, 8)}</span> <StatusBadge status={job.status} warning={job.warning_message} />
-        </h2>
-        <div className="row">
+    <div className="job-detail">
+      <div className="page-head">
+        <div className="job-title">
+          <h2>Job <span className="mono">{job.id.slice(0, 8)}</span></h2>
+          <StatusBadge status={job.status} warning={job.warning_message} />
+        </div>
+        <div className="page-actions">
+          <Link className="btn" to="/jobs"><IconArrowLeft /> Historial</Link>
           {canCancel && active && (
             <button type="button" className="btn danger" onClick={cancelJob} disabled={cancelling || cancelRequested}>
               <IconClose /> {cancelRequested ? 'Cancelando…' : 'Cancelar restore'}
             </button>
           )}
-          <Link className="btn ghost" to="/jobs"><IconArrowLeft /> Historial</Link>
         </div>
       </div>
-      <div className="muted small">
-        Método: {job.method === 'native' ? 'restore nativo (pg_restore / psql)' : 'import de Cloud SQL'}
-        {job.bucket_path && <> · origen <span className="mono">{job.bucket_path}</span></>}
+
+      <div className="card">
+        <dl className="meta-grid flush">
+          <div><dt>Motor</dt><dd>{job.engine}</dd></div>
+          <div><dt>Método</dt><dd>{job.method === 'native' ? 'restore nativo (pg_restore / psql)' : 'import de Cloud SQL'}</dd></div>
+          <div><dt>Creado</dt><dd>{fmtDate(job.created_at)}</dd></div>
+          <div><dt>Inicio</dt><dd>{fmtDate(job.started_at)}</dd></div>
+          <div><dt>Fin</dt><dd>{fmtDate(job.finished_at)}</dd></div>
+          {job.bucket_path && <div className="span-all"><dt>Origen</dt><dd className="mono">{job.bucket_path}</dd></div>}
+        </dl>
       </div>
+
       {cancelError && <div className="alert error">{cancelError}</div>}
       {cancelRequested && (
         <div className="alert warn">
@@ -114,6 +124,8 @@ export default function JobDetailPage() {
       {job.warning_message && <div className="alert warn">{job.warning_message}</div>}
 
       <h3>Bases de datos</h3>
+      <div className="card flush">
+      <div className="table-wrap">
       <table className="table">
         <thead>
           <tr><th>#</th><th>Backup</th><th>Destino</th>{hasOwner && <th>Owner</th>}<th>Estado</th></tr>
@@ -137,6 +149,8 @@ export default function JobDetailPage() {
           ))}
         </tbody>
       </table>
+      </div>
+      </div>
 
       <h3>Progreso en vivo</h3>
       <div className="log" ref={logRef}>
