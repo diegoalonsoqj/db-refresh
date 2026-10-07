@@ -1,4 +1,4 @@
-// Controladores thin de restauraciones programadas.
+// Controladores thin de tareas de restore y su programación.
 import * as schedule from '../services/schedule.service.js';
 
 const wrap = (fn) => async (req, res, next) => {
@@ -19,6 +19,10 @@ export const deleteSchedule = wrap(async (req, res) => {
   await schedule.deleteSchedule(req.params.id);
   res.status(204).end();
 });
+export const setTaskSchedule = wrap(async (req, res) =>
+  res.json(await schedule.setTaskSchedule(req.params.id, req.body)));
+export const previewSchedule = wrap(async (req, res) =>
+  res.json(await schedule.previewSchedule(req.params.id)));
 export const runSchedule = wrap(async (req, res) => {
   const job = await schedule.runScheduleNow(req.params.id);
   res.status(202).json({ jobId: job.id, status: job.status });

@@ -1,162 +1,132 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { useList } from '../hooks/useList.js';
-import { FormModal, IconButton, NewButton, PageHead } from '../components/ui.jsx';
-import { IconClose, IconDelete, IconEdit, IconPlay, IconPlus } from '../components/icons.jsx';
+import StatusBadge from '../components/StatusBadge.jsx';
+import { IconButton, NewButton, PageHead } from '../components/ui.jsx';
+import { IconDelete, IconEdit, IconPlay, IconSchedule } from '../components/icons.jsx';
 import { useConfirm } from '../components/ConfirmDialog.jsx';
 import { useToast } from '../components/Toast.jsx';
+import { describeSchedule, fmtInZone } from '../lib/schedule.js';
+import TaskModal from './schedules/TaskModal.jsx';
+import ScheduleModal from './schedules/ScheduleModal.jsx';
 
-const empty = { instanceRef: '', bucketRef: '', cronExpr: '0 3 * * *', mapping: [{ backupFile: '', targetDb: '' }], isActive: true };
+/** Origen de los backups de una tarea, relativo al bucket. */
+function folderOf(t) {
+  const base = `gs://${t.bucket_name}${t.base_prefix ? `/${String(t.base_prefix).replace(/^\/+|\/+$/g, '')}` : ''}`;
+  return t.bucket_path && t.bucket_path !== base ? t.bucket_path : base;
+}
 
+/**
+ * Tareas de restore (modelo de db-keeper): se define la tarea (qué restaurar) y
+ * luego se programa (una vez o recurrente) con el icono de calendario. También
+ * se pueden crear desde Lanzar restore con «Guardar como tarea».
+ */
 export default function SchedulesPage() {
   const confirm = useConfirm();
   const toast = useToast();
   const navigate = useNavigate();
-  const { data: schedules, error, reload } = useList('/schedules');
+  const { data: tasks, error, reload } = useList('/schedules');
   const { data: instances } = useList('/instances');
-  const { data: buckets } = useList('/buckets');
-  const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState(empty);
-  const [formErr, setFormErr] = useState(null);
-  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(null); // null | {} (nueva) | tarea
+  const [scheduling, setScheduling] = useState(null);
 
-  const nameInstance = (id) => (instances ?? []).find((i) => i.id === id)?.instance_name ?? id?.slice(0, 8);
-  const nameBucket = (id) => (buckets ?? []).find((b) => b.id === id)?.bucket_name ?? id?.slice(0, 8);
-
-  const openNew = () => { setForm({ ...empty, mapping: [{ backupFile: '', targetDb: '' }] }); setEditing({}); setFormErr(null); };
-  const openEdit = (s) => {
-    setForm({
-      instanceRef: s.instance_ref, bucketRef: s.bucket_ref, cronExpr: s.cron_expr,
-      mapping: s.mapping?.length ? s.mapping : [{ backupFile: '', targetDb: '' }], isActive: s.is_active,
-    });
-    setEditing(s); setFormErr(null);
-  };
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
-  // Owner del import (importUser): solo PostgreSQL.
-  const engineOf = (instances ?? []).find((i) => i.id === form.instanceRef)?.engine;
-  const isPg = engineOf === 'postgres';
-  const isMssql = engineOf === 'sqlserver';
-
-  const setMap = (idx, k, v) => setForm((f) => ({ ...f, mapping: f.mapping.map((m, i) => (i === idx ? { ...m, [k]: v } : m)) }));
-  const addMap = () => setForm((f) => ({ ...f, mapping: [...f.mapping, { backupFile: '', targetDb: '' }] }));
-  const delMap = (idx) => setForm((f) => ({ ...f, mapping: f.mapping.filter((_, i) => i !== idx) }));
-
-  const save = async (e) => {
-    e.preventDefault(); setBusy(true); setFormErr(null);
-    const mapping = form.mapping
-      .filter((m) => m.backupFile && m.targetDb)
-      .map(({ importUser, fixOrphans, dropViaSql, ...m }) => ({
-        ...m,
-        ...(isPg && importUser ? { importUser } : {}),
-        ...(isMssql && fixOrphans ? { fixOrphans: true } : {}),
-        ...(isPg && dropViaSql ? { dropViaSql: true } : {}),
-      }));
-    const body = { ...form, mapping };
-    try {
-      if (editing.id) await api.put(`/schedules/${editing.id}`, body);
-      else await api.post('/schedules', body);
-      setEditing(null); toast.success('Guardado'); await reload();
-    } catch (err) { setFormErr(err.details ? `${err.message}` : err.message); }
-    finally { setBusy(false); }
-  };
-
-  const remove = async (s) => {
-    if (!(await confirm({ message: '¿Eliminar esta programación?', confirmLabel: 'Eliminar', danger: true }))) return;
-    try { await api.del(`/schedules/${s.id}`); await reload(); }
+  const remove = async (t) => {
+    if (!(await confirm({ message: `¿Eliminar la tarea «${t.name}»? También se elimina su programación.`, confirmLabel: 'Eliminar', danger: true }))) return;
+    try { await api.del(`/schedules/${t.id}`); await reload(); toast.success('Tarea eliminada'); }
     catch (err) { toast.error(err.message); }
   };
 
-  const run = async (s) => {
-    try { const d = await api.post(`/schedules/${s.id}/run`); navigate(`/jobs/${d.jobId}`); }
-    catch (err) { toast.error(err.message); }
+  const run = async (t) => {
+    if (!(await confirm({
+      title: 'Ejecutar tarea',
+      message: `¿Ejecutar ahora «${t.name}»?\n\nSe encola el restore en ${t.instance_name}: las BD de destino que existan se eliminan y se reemplazan. La programación no cambia.`,
+      confirmLabel: 'Ejecutar ahora', danger: true,
+    }))) return;
+    try { const d = await api.post(`/schedules/${t.id}/run`); navigate(`/jobs/${d.jobId}`); }
+    catch (err) { toast.error(err.message); await reload(); }
   };
 
   if (error) return <div className="alert error">{error}</div>;
-  if (!schedules) return <div className="muted">Cargando…</div>;
+  if (!tasks) return <div className="muted">Cargando…</div>;
 
   return (
     <div className="page-fill">
-      <PageHead info={`${schedules.length} programación(es)`}>
-        <NewButton onClick={openNew} disabled={!instances?.length || !buckets?.length}>Nueva programación</NewButton>
+      <PageHead info={`${tasks.length} tarea(s) · crea la tarea y prográmala con el icono de calendario`}>
+        <NewButton onClick={() => setEditing({})} disabled={!instances?.length}>Nueva tarea</NewButton>
       </PageHead>
       <div className="table-wrap">
-      <table className="table">
-        <thead><tr><th>Instancia</th><th>Bucket</th><th>Cron</th><th>BD</th><th>Activo</th><th>Última</th><th /></tr></thead>
-        <tbody>
-          {schedules.length === 0 && <tr><td colSpan="7" className="muted">Sin programaciones.</td></tr>}
-          {schedules.map((s) => (
-            <tr key={s.id}>
-              <td>{nameInstance(s.instance_ref)}</td>
-              <td className="mono small">{nameBucket(s.bucket_ref)}</td>
-              <td className="mono">{s.cron_expr}</td>
-              <td>{s.mapping?.length ?? 0}</td>
-              <td><span className={`pill ${s.is_active ? 'on' : ''}`}>{s.is_active ? 'sí' : 'no'}</span></td>
-              <td className="muted small">{s.last_run_at ? new Date(s.last_run_at).toLocaleString() : '—'}</td>
-              <td className="row-actions">
-                <IconButton icon={IconPlay} label="Ejecutar ahora" onClick={() => run(s)} />
-                <IconButton icon={IconEdit} label="Editar" onClick={() => openEdit(s)} />
-                <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(s)} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        <table className="table">
+          <thead>
+            <tr><th>Tarea</th><th>Origen</th><th>BD</th><th>Programación</th><th>Próxima</th><th>Última</th><th /></tr>
+          </thead>
+          <tbody>
+            {tasks.length === 0 && (
+              <tr><td colSpan="7" className="muted">Sin tareas. Créala aquí o desde Lanzar restore → «Guardar como tarea».</td></tr>
+            )}
+            {tasks.map((t) => (
+              <tr key={t.id}>
+                <td>
+                  <div>{t.name}</div>
+                  <div className="muted small">{t.project_id} / {t.instance_name} ({t.engine})</div>
+                </td>
+                <td className="mono small task-origin" title={folderOf(t)}>{folderOf(t)}</td>
+                <td>
+                  <div>{t.mapping?.length ?? 0}</div>
+                  {t.mapping?.some((m) => m.source === 'latest') && <div className="muted small">último por patrón</div>}
+                </td>
+                <td>
+                  <span className={t.schedule_mode === 'none' ? 'muted' : ''}>{describeSchedule(t)}</span>
+                  {t.schedule_mode !== 'none' && <div className="muted small">{t.timezone}</div>}
+                </td>
+                <td className="small">{t.is_active && t.next_run_at ? fmtInZone(t.next_run_at, t.timezone) : <span className="muted">—</span>}</td>
+                <td className="small">
+                  {t.last_run_at ? (
+                    <>
+                      <div className="muted">{fmtInZone(t.last_run_at, t.timezone)}</div>
+                      {t.last_error ? (
+                        <span className="pill warn" title={t.last_error}>No se lanzó</span>
+                      ) : t.last_job_ref && (
+                        <Link to={`/jobs/${t.last_job_ref}`} title="Ver el job"><StatusBadge status={t.last_job_status ?? 'pending'} /></Link>
+                      )}
+                    </>
+                  ) : <span className="muted">—</span>}
+                  {t.last_error && <div className="task-error">{t.last_error}</div>}
+                </td>
+                <td className="row-actions">
+                  <IconButton icon={IconPlay} label="Ejecutar ahora" onClick={() => run(t)} />
+                  <IconButton icon={IconSchedule} label="Programar" title="Programar (fecha y hora)" onClick={() => setScheduling(t)} />
+                  <IconButton icon={IconEdit} label="Editar" onClick={() => setEditing(t)} />
+                  <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(t)} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {editing && (
-        <FormModal
-          size="lg" title={editing.id ? 'Editar programación' : 'Nueva programación'}
-          onClose={() => setEditing(null)} onSubmit={save} busy={busy} error={formErr}
-        >
-            <label>Instancia
-              <select value={form.instanceRef} onChange={set('instanceRef')} required>
-                <option value="">— elegir —</option>
-                {(instances ?? []).map((i) => <option key={i.id} value={i.id}>{i.project_id} / {i.instance_name} ({i.engine})</option>)}
-              </select>
-            </label>
-            <label>Bucket
-              <select value={form.bucketRef} onChange={set('bucketRef')} required>
-                <option value="">— elegir —</option>
-                {(buckets ?? []).map((b) => <option key={b.id} value={b.id}>{b.bucket_name} · {b.project_id}</option>)}
-              </select>
-            </label>
-            <label>Expresión cron<input className="mono" value={form.cronExpr} onChange={set('cronExpr')} placeholder="0 3 * * *" required /></label>
-            <label className="checkline cron-active">
-              <input type="checkbox" checked={form.isActive} onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))} />
-              Activo
-            </label>
-
-            <div className="full">
-              <div className="row between">
-                <span className="field-label">Mapping backup → BD destino</span>
-                <button type="button" className="btn small" onClick={addMap}><IconPlus size={15} /> Fila</button>
-              </div>
-              {form.mapping.map((m, idx) => (
-                <div className="row gap" key={idx} style={{ marginTop: '.4rem' }}>
-                  <input className="mono" style={{ flex: 1 }} placeholder="dump.sql" value={m.backupFile} onChange={(e) => setMap(idx, 'backupFile', e.target.value)} />
-                  <span className="muted">→</span>
-                  <input className="mono" style={{ flex: 1 }} placeholder="mi_bd" value={m.targetDb} onChange={(e) => setMap(idx, 'targetDb', e.target.value)} />
-                  {isMssql && (
-                    <label className="checkline small" title="Tras restaurar, remapea los usuarios de BD a su login">
-                      <input type="checkbox" checked={!!m.fixOrphans} onChange={(e) => setMap(idx, 'fixOrphans', e.target.checked)} />
-                      Huérfanos
-                    </label>
-                  )}
-                  {isPg && (
-                    <input className="mono" style={{ flex: 1 }} placeholder="owner (opc.)" title="Usuario con el que se importa (PostgreSQL)" value={m.importUser ?? ''} onChange={(e) => setMap(idx, 'importUser', e.target.value)} />
-                  )}
-                  {isPg && (
-                    <label className="checkline small" title="Borra la BD existente por SQL con la credencial de la instancia (para BD cuyo owner no es cloudsqlsuperuser). Requiere la conexión SQL de la instancia">
-                      <input type="checkbox" checked={!!m.dropViaSql} onChange={(e) => setMap(idx, 'dropViaSql', e.target.checked)} />
-                      Borrar por SQL
-                    </label>
-                  )}
-                  <button type="button" className="btn ghost small icon-btn" onClick={() => delMap(idx)} disabled={form.mapping.length === 1} aria-label="Quitar fila"><IconClose /></button>
-                </div>
-              ))}
-            </div>
-        </FormModal>
+        <TaskModal
+          task={editing}
+          instances={instances ?? []}
+          onClose={() => setEditing(null)}
+          onSaved={async (saved) => {
+            setEditing(null);
+            toast.success(editing.id ? 'Tarea guardada' : `Tarea «${saved.name}» creada: prográmala con el icono de calendario`);
+            await reload();
+          }}
+        />
+      )}
+      {scheduling && (
+        <ScheduleModal
+          task={scheduling}
+          onClose={() => setScheduling(null)}
+          onSaved={async (saved) => {
+            setScheduling(null);
+            toast.success(saved.schedule_mode === 'none' ? `«${saved.name}» queda sin programar` : `Programada: ${describeSchedule(saved)}`);
+            await reload();
+          }}
+        />
       )}
     </div>
   );

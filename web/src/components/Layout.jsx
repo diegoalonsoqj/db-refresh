@@ -127,7 +127,7 @@ export default function Layout() {
   const items = [
     { to: '/jobs', label: 'Historial', title: 'Historial de restauraciones', Icon: IconHistory, show: true },
     { to: '/launch', label: 'Lanzar restore', title: 'Lanzar restauración', Icon: IconLaunch, show: canLaunch },
-    { to: '/schedules', label: 'Programadas', title: 'Restauraciones programadas', Icon: IconSchedule, show: canLaunch },
+    { to: '/schedules', label: 'Programadas', title: 'Tareas de restore', Icon: IconSchedule, show: canLaunch },
     { to: '/catalog', label: 'Catálogo', title: 'Catálogo GCP', Icon: IconCatalog, show: isAdmin },
     { to: '/credentials', label: 'Credenciales', title: 'Credenciales SQL', Icon: IconLock, show: isAdmin },
     { to: '/users', label: 'Usuarios', Icon: IconUsers, show: isAdmin },
