@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client.js';
 import { useList } from '../hooks/useList.js';
-import Modal from '../components/Modal.jsx';
-import { IconClose } from '../components/icons.jsx';
+import { FormModal, IconButton, NewButton, PageHead } from '../components/ui.jsx';
+import { IconClose, IconDelete, IconEdit, IconPlay, IconPlus } from '../components/icons.jsx';
 import { useConfirm } from '../components/ConfirmDialog.jsx';
 import { useToast } from '../components/Toast.jsx';
 
@@ -56,7 +56,7 @@ export default function SchedulesPage() {
     try {
       if (editing.id) await api.put(`/schedules/${editing.id}`, body);
       else await api.post('/schedules', body);
-      setEditing(null); await reload();
+      setEditing(null); toast.success('Guardado'); await reload();
     } catch (err) { setFormErr(err.details ? `${err.message}` : err.message); }
     finally { setBusy(false); }
   };
@@ -76,10 +76,11 @@ export default function SchedulesPage() {
   if (!schedules) return <div className="muted">Cargando…</div>;
 
   return (
-    <div>
-      <div className="page-head">
-        <button className="btn primary small" onClick={openNew} disabled={!instances?.length || !buckets?.length}>+ Nueva</button>
-      </div>
+    <div className="page-fill">
+      <PageHead info={`${schedules.length} programación(es)`}>
+        <NewButton onClick={openNew} disabled={!instances?.length || !buckets?.length}>Nueva programación</NewButton>
+      </PageHead>
+      <div className="table-wrap">
       <table className="table">
         <thead><tr><th>Instancia</th><th>Bucket</th><th>Cron</th><th>BD</th><th>Activo</th><th>Última</th><th /></tr></thead>
         <tbody>
@@ -92,19 +93,22 @@ export default function SchedulesPage() {
               <td>{s.mapping?.length ?? 0}</td>
               <td><span className={`pill ${s.is_active ? 'on' : ''}`}>{s.is_active ? 'sí' : 'no'}</span></td>
               <td className="muted small">{s.last_run_at ? new Date(s.last_run_at).toLocaleString() : '—'}</td>
-              <td className="actions">
-                <button className="btn ghost small" onClick={() => run(s)}>Ejecutar</button>
-                <button className="btn ghost small" onClick={() => openEdit(s)}>Editar</button>
-                <button className="btn ghost small" onClick={() => remove(s)}>Eliminar</button>
+              <td className="row-actions">
+                <IconButton icon={IconPlay} label="Ejecutar ahora" onClick={() => run(s)} />
+                <IconButton icon={IconEdit} label="Editar" onClick={() => openEdit(s)} />
+                <IconButton icon={IconDelete} label="Eliminar" danger onClick={() => remove(s)} />
               </td>
             </tr>
           ))}
         </tbody>
       </table>
+      </div>
 
       {editing && (
-        <Modal wide title={editing.id ? 'Editar programación' : 'Nueva programación'} onClose={() => setEditing(null)}>
-          <form className="stack" onSubmit={save}>
+        <FormModal
+          size="lg" title={editing.id ? 'Editar programación' : 'Nueva programación'}
+          onClose={() => setEditing(null)} onSubmit={save} busy={busy} error={formErr}
+        >
             <label>Instancia
               <select value={form.instanceRef} onChange={set('instanceRef')} required>
                 <option value="">— elegir —</option>
@@ -118,11 +122,15 @@ export default function SchedulesPage() {
               </select>
             </label>
             <label>Expresión cron<input className="mono" value={form.cronExpr} onChange={set('cronExpr')} placeholder="0 3 * * *" required /></label>
+            <label className="checkline cron-active">
+              <input type="checkbox" checked={form.isActive} onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))} />
+              Activo
+            </label>
 
-            <div>
+            <div className="full">
               <div className="row between">
-                <span className="muted small">Mapping backup → BD destino</span>
-                <button type="button" className="btn ghost small" onClick={addMap}>+ fila</button>
+                <span className="field-label">Mapping backup → BD destino</span>
+                <button type="button" className="btn small" onClick={addMap}><IconPlus size={15} /> Fila</button>
               </div>
               {form.mapping.map((m, idx) => (
                 <div className="row gap" key={idx} style={{ marginTop: '.4rem' }}>
@@ -148,18 +156,7 @@ export default function SchedulesPage() {
                 </div>
               ))}
             </div>
-
-            <label className="checkline">
-              <input type="checkbox" checked={form.isActive} onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))} />
-              Activo
-            </label>
-            {formErr && <div className="alert error">{formErr}</div>}
-            <div className="row gap">
-              <button className="btn primary" disabled={busy}>Guardar</button>
-              <button type="button" className="btn" onClick={() => setEditing(null)}>Cancelar</button>
-            </div>
-          </form>
-        </Modal>
+        </FormModal>
       )}
     </div>
   );

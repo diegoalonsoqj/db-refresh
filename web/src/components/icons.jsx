@@ -3,8 +3,8 @@
 // pantallas no dependan directamente de la librería.
 import {
   ArrowLeft, ArrowUp, CalendarClock, ChevronDown, ChevronLeft, CirclePlay, Database,
-  Folder, History, KeyRound, Lock, LogOut, Moon, Pencil, Plus, RefreshCw, ScrollText,
-  Server, Settings, Sun, Trash2, TriangleAlert, User, Users, X,
+  FileCode2, Folder, History, KeyRound, Link2, Lock, LogOut, Moon, Pencil, Play, PlugZap, Plus,
+  RefreshCw, ScrollText, Server, Settings, Star, Sun, Trash2, TriangleAlert, Unlink, User, Users, X,
 } from 'lucide-react';
 
 const icon = (Lucide) => function Icon({ size = 18 }) {
@@ -36,6 +36,12 @@ export const IconMoon = icon(Moon);
 export const IconEdit = icon(Pencil);
 export const IconDelete = icon(Trash2);
 export const IconPlus = icon(Plus);
+export const IconPlay = icon(Play);
+export const IconPlug = icon(PlugZap);
+export const IconLink = icon(Link2);
+export const IconUnlink = icon(Unlink);
+export const IconScript = icon(FileCode2);
+export const IconStar = icon(Star);
 
 // Logo de la app (mismo dibujo que public/favicon.svg): BD + flecha de refresco
 // sobre un cuadrado con el color primario.

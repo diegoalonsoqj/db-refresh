@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { api } from '../../api/client.js';
 import Modal from '../../components/Modal.jsx';
-import { IconLaunch } from '../../components/icons.jsx';
+import { IconDelete, IconEdit, IconPlay } from '../../components/icons.jsx';
+import { IconButton, NewButton, PageHead } from '../../components/ui.jsx';
 import { useConfirm } from '../../components/ConfirmDialog.jsx';
 
 const LEVEL_LABEL = { info: 'INFO', warning: 'WARN', error: 'ERROR' };
@@ -47,6 +48,7 @@ const SQL_HINT = {
 
 export default function ScriptsModal({ instance, onClose }) {
   const confirm = useConfirm();
+  const formId = useId();
   const [phase, setPhase] = useState('pre');
   const [scripts, setScripts] = useState(null);
   const [editing, setEditing] = useState(null); // null | {} (nuevo) | script
@@ -116,8 +118,25 @@ export default function ScriptsModal({ instance, onClose }) {
 
   const noConnection = !instance.db_host || !instance.credential_ref;
 
+  // En edición, las acciones del formulario van en el pie del modal.
+  const footer = editing ? (
+    <>
+      {editing.id && (
+        <div className="modal-foot-start">
+          <button type="button" className="btn" onClick={() => runScript(editing)}
+            disabled={noConnection || dirty || run?.pending}
+            title={dirty ? 'Guarda los cambios para ejecutar esta versión' : noConnection ? 'La instancia no tiene conexión SQL' : undefined}>
+            <IconPlay /> Ejecutar
+          </button>
+        </div>
+      )}
+      <button type="button" className="btn" onClick={() => setEditing(null)}>Cancelar</button>
+      <button type="submit" form={formId} className="btn primary" disabled={busy}>Guardar</button>
+    </>
+  ) : null;
+
   return (
-    <Modal wide title={`Scripts de ${instance.instance_name}`} onClose={onClose}>
+    <Modal wide title={`Scripts de ${instance.instance_name}`} onClose={onClose} footer={footer}>
       {err && <div className="alert error">{err}</div>}
       {noConnection && (
         <div className="alert warn">
@@ -138,45 +157,36 @@ export default function ScriptsModal({ instance, onClose }) {
       )}
 
       {editing ? (
-        <form className="stack" onSubmit={save}>
-          <div className="muted small">
+        <form id={formId} className="form-grid" onSubmit={save}>
+          <div className="muted small full">
             {editing.id ? 'Editando' : 'Nuevo'} {PHASES.find((p) => p.key === (editing.phase ?? phase)).one}
           </div>
-          <div className="row gap">
-            <label style={{ flex: 2 }}>Nombre<input value={form.name} onChange={set('name')} autoFocus required /></label>
-            <label style={{ flex: 1 }}>Orden<input type="number" step="1" value={form.sortOrder} onChange={set('sortOrder')} /></label>
-          </div>
-          <label>Base de datos
+          <label>Nombre<input value={form.name} onChange={set('name')} autoFocus required /></label>
+          <label>Orden<input type="number" step="1" value={form.sortOrder} onChange={set('sortOrder')} /></label>
+          <label className="full">Base de datos
             <input className="mono" value={form.databaseName} onChange={set('databaseName')} placeholder={DB_PLACEHOLDER[instance.engine]} />
-            <span className="muted small">Donde se conecta el script. {(editing.phase ?? phase) === 'pre'
+            <span className="field-hint">Donde se conecta el script. {(editing.phase ?? phase) === 'pre'
               ? 'Corre antes del DROP: una BD que se va a reemplazar aún existe; una BD nueva todavía no.'
               : 'Puede ser una de las BD restauradas.'}</span>
           </label>
-          <label>SQL
+          <label className="full">SQL
             <textarea className="textarea" value={form.sqlText} onChange={set('sqlText')} spellCheck={false} required
               placeholder={SQL_PLACEHOLDER[editing.phase ?? phase][instance.engine]} />
-            <span className="muted small">{SQL_HINT[instance.engine]}</span>
+            <span className="field-hint">{SQL_HINT[instance.engine]}</span>
           </label>
-          <label className="checkline">
+          <label className="checkline full">
             <input type="checkbox" checked={form.isActive} onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))} />
             Activo
           </label>
-          <div className="row gap">
-            <button className="btn primary" disabled={busy}>Guardar</button>
-            <button type="button" className="btn" onClick={() => setEditing(null)}>Cancelar</button>
-            {editing.id && (
-              <button type="button" className="btn" onClick={() => runScript(editing)}
-                disabled={noConnection || dirty || run?.pending}
-                title={dirty ? 'Guarda los cambios para ejecutar esta versión' : noConnection ? 'La instancia no tiene conexión SQL' : undefined}>
-                <IconLaunch /> Ejecutar
-              </button>
-            )}
-          </div>
-          {dirty && <div className="muted small">Hay cambios sin guardar: se ejecuta la versión guardada, guarda antes para probar la nueva.</div>}
+          {dirty && <div className="muted small full">Hay cambios sin guardar: se ejecuta la versión guardada, guarda antes para probar la nueva.</div>}
         </form>
       ) : !scripts ? <div className="muted">Cargando…</div> : (
         <>
           <p className="muted small">{PHASE_HELP[phase]}</p>
+          <PageHead>
+            <NewButton onClick={openNew}>Nuevo {phaseInfo.one}</NewButton>
+          </PageHead>
+          <div className="table-wrap">
           <table className="table">
             <thead><tr><th>#</th><th>Nombre</th><th>BD</th><th>Activo</th><th /></tr></thead>
             <tbody>
@@ -187,18 +197,16 @@ export default function ScriptsModal({ instance, onClose }) {
                   <td>{s.name}</td>
                   <td className="mono small">{s.database_name ?? <span className="muted">{DB_DEFAULT[instance.engine] ?? '—'}</span>}</td>
                   <td><span className={`pill ${s.is_active ? 'on' : ''}`}>{s.is_active ? 'sí' : 'no'}</span></td>
-                  <td className="actions">
-                    <button className="btn ghost small" disabled={busy || noConnection || run?.pending} onClick={() => runScript(s)}
-                      title={noConnection ? 'La instancia no tiene conexión SQL' : 'Ejecutar ahora en la instancia'}>Ejecutar</button>
-                    <button className="btn ghost small" disabled={busy} onClick={() => openEdit(s)}>Editar</button>
-                    <button className="btn ghost small" disabled={busy} onClick={() => remove(s)}>Eliminar</button>
+                  <td className="row-actions">
+                    <IconButton icon={IconPlay} label="Ejecutar" disabled={busy || noConnection || run?.pending} onClick={() => runScript(s)}
+                      title={noConnection ? 'La instancia no tiene conexión SQL' : 'Ejecutar ahora en la instancia'} />
+                    <IconButton icon={IconEdit} label="Editar" disabled={busy} onClick={() => openEdit(s)} />
+                    <IconButton icon={IconDelete} label="Eliminar" danger disabled={busy} onClick={() => remove(s)} />
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <div className="row gap">
-            <button className="btn primary small" onClick={openNew}>+ Nuevo {phaseInfo.one}</button>
           </div>
         </>
       )}

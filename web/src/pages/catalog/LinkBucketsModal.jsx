@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import Modal from '../../components/Modal.jsx';
+import { IconButton } from '../../components/ui.jsx';
+import { IconStar, IconUnlink } from '../../components/icons.jsx';
 
 // Gestiona la relación N:N instancia <-> buckets: vincular, marcar default, desvincular.
 export default function LinkBucketsModal({ instance, allBuckets, onClose }) {
@@ -34,6 +36,7 @@ export default function LinkBucketsModal({ instance, allBuckets, onClose }) {
       {err && <div className="alert error">{err}</div>}
       {!linked ? <div className="muted">Cargando…</div> : (
         <>
+          <div className="table-wrap">
           <table className="table">
             <thead><tr><th>Bucket</th><th>Default</th><th /></tr></thead>
             <tbody>
@@ -41,16 +44,16 @@ export default function LinkBucketsModal({ instance, allBuckets, onClose }) {
               {linked.map((b) => (
                 <tr key={b.id}>
                   <td className="mono">{b.bucket_name}<span className="mono small muted"> {b.base_prefix}</span></td>
-                  <td>
-                    {b.is_default
-                      ? <span className="pill on">default</span>
-                      : <button className="btn ghost small" disabled={busy} onClick={() => link(b.id, true)}>hacer default</button>}
+                  <td>{b.is_default ? <span className="pill on">default</span> : <span className="muted small">—</span>}</td>
+                  <td className="row-actions">
+                    {!b.is_default && <IconButton icon={IconStar} label="Hacer default" disabled={busy} onClick={() => link(b.id, true)} />}
+                    <IconButton icon={IconUnlink} label="Desvincular" danger disabled={busy} onClick={() => unlink(b.id)} />
                   </td>
-                  <td><button className="btn ghost small" disabled={busy} onClick={() => unlink(b.id)}>Desvincular</button></td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
 
           <h3>Vincular bucket</h3>
           <div className="row gap">
