@@ -609,3 +609,17 @@ test('tareas de restore: CRUD, programación (una vez / recurrente / sin), reser
     await req('DELETE', `/projects/${proj.data.id}`, { cookie });
   }
 });
+
+test('Panel: indicadores y listas para cualquier autenticado; sin sesión 401', async (t) => {
+  if (!dbOk) return t.skip('BD no disponible');
+  assert.equal((await req('GET', '/dashboard')).status, 401);
+  const viewer = await login(VIEWER, PW);
+  const r = await req('GET', '/dashboard', { cookie: viewer.cookie });
+  assert.equal(r.status, 200);
+  for (const k of ['instances', 'tasks', 'jobs7d', 'active']) assert.equal(typeof r.data[k], 'object', k);
+  assert.equal(typeof r.data.instances.total, 'number');
+  assert.equal(typeof r.data.jobs7d.total, 'number');
+  assert.ok('successRate' in r.data.jobs7d);
+  assert.ok(Array.isArray(r.data.recent));
+  assert.ok(Array.isArray(r.data.upcoming));
+});

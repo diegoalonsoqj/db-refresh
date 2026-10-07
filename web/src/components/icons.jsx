@@ -2,7 +2,7 @@
 // del texto (currentColor). Se envuelven con nombres propios para que las
 // pantallas no dependan directamente de la librería.
 import {
-  ArrowLeft, ArrowUp, CalendarClock, Eye, ChevronDown, ChevronLeft, CirclePlay, Database,
+  Activity, ArrowLeft, ArrowUp, CalendarClock, CircleCheck, CircleX, Eye, LayoutDashboard, ChevronDown, ChevronLeft, CirclePlay, Database,
   FileCode2, Folder, History, KeyRound, Link2, Lock, LogOut, Moon, Pencil, Play, PlugZap, Plus,
   RefreshCw, ScrollText, Server, Settings, Star, Sun, Trash2, TriangleAlert, Unlink, User, Users, X,
 } from 'lucide-react';
@@ -38,6 +38,10 @@ export const IconDelete = icon(Trash2);
 export const IconPlus = icon(Plus);
 export const IconPlay = icon(Play);
 export const IconView = icon(Eye);
+export const IconDashboard = icon(LayoutDashboard);
+export const IconSuccess = icon(CircleCheck);
+export const IconFailed = icon(CircleX);
+export const IconActivity = icon(Activity);
 export const IconPlug = icon(PlugZap);
 export const IconLink = icon(Link2);
 export const IconUnlink = icon(Unlink);

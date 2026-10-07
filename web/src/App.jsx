@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout.jsx';
 import { RequireAuth } from './auth/RequireAuth.jsx';
 import LoginPage from './pages/LoginPage.jsx';
+import DashboardPage from './pages/DashboardPage.jsx';
 import JobsPage from './pages/JobsPage.jsx';
 import JobDetailPage from './pages/JobDetailPage.jsx';
 import TaskFormPage from './pages/TaskFormPage.jsx';
@@ -23,7 +24,9 @@ export default function App() {
           </RequireAuth>
         }
       >
-        <Route index element={<Navigate to="/jobs" replace />} />
+        {/* Página de inicio: el Panel (como db-keeper). */}
+        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/jobs" element={<JobsPage />} />
         <Route path="/jobs/:id" element={<JobDetailPage />} />
         {/* Tareas de restore (modelo de db-keeper): se definen y guardan, y desde la
