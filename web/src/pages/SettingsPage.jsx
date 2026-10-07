@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client.js';
 import { useAuth } from '../auth/AuthContext.jsx';
+import { THEMES, useTheme } from '../theme/ThemeContext.jsx';
 
 function ResultLine({ result }) {
   if (!result) return null;
@@ -297,6 +298,74 @@ function GcpSection({ data, onReload }) {
   );
 }
 
+const MODE_OPTIONS = [
+  { id: 'dark', label: 'Oscuro' },
+  { id: 'light', label: 'Claro' },
+  { id: 'system', label: 'Sistema' },
+];
+
+/** Paleta + modo. Preferencia personal: se guarda para el usuario en este navegador. */
+function AppearanceSection() {
+  const { theme, mode, isDark, setTheme, setMode } = useTheme();
+
+  return (
+    <div className="card stack">
+      <SectionHead
+        title="Apariencia"
+        description="Paleta de colores y modo claro u oscuro. Es una preferencia personal: se guarda para tu usuario en este navegador."
+      />
+
+      <div className="field">
+        <span className="field-label">Paleta</span>
+        <div className="theme-grid">
+          {THEMES.map((t) => {
+            const [bg, card, accent] = t.swatch[isDark ? 'dark' : 'light'];
+            const active = t.id === theme;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                className={`theme-card ${active ? 'active' : ''}`}
+                onClick={() => setTheme(t.id)}
+                aria-pressed={active}
+              >
+                {/* Mini vista previa: fondo, sidebar/tarjeta y primario en el modo actual */}
+                <span className="theme-preview" style={{ background: bg }}>
+                  <span className="theme-preview-side" style={{ background: card }} />
+                  <span className="theme-preview-card" style={{ background: card }}>
+                    <span style={{ background: accent, width: '65%' }} />
+                    <span style={{ background: accent, width: '35%', opacity: 0.4 }} />
+                  </span>
+                </span>
+                <span className="theme-name">{t.label}</span>
+                <span className="field-hint">{t.description}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="field">
+        <span className="field-label">Modo</span>
+        <div className="segmented" role="group" aria-label="Modo">
+          {MODE_OPTIONS.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              className={mode === m.id ? 'active' : ''}
+              onClick={() => setMode(m.id)}
+              aria-pressed={mode === m.id}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <span className="field-hint">«Sistema» sigue la preferencia del sistema operativo.</span>
+      </div>
+    </div>
+  );
+}
+
 /** Solo lectura: estado de la API y de la BD, versión y sesión actual. */
 function SystemSection() {
   const { user } = useAuth();
@@ -334,23 +403,27 @@ function SystemSection() {
 }
 
 const SECTIONS = [
-  { id: 'ad', label: 'AD / LDAP' },
-  { id: 'gcp', label: 'GCP' },
-  { id: 'system', label: 'Sistema' },
+  { id: 'appearance', label: 'Apariencia' },
+  { id: 'ad', label: 'AD / LDAP', admin: true },
+  { id: 'gcp', label: 'GCP', admin: true },
+  { id: 'system', label: 'Sistema', admin: true },
 ];
 
 export default function SettingsPage() {
-  const [section, setSection] = useState('ad');
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const [section, setSection] = useState('appearance');
   const [ad, setAd] = useState(null);
   const [gcp, setGcp] = useState(null);
 
   // Los estados viven aquí (no en cada sección) para que la nav pueda mostrar
-  // de un vistazo qué está configurado y qué no.
+  // de un vistazo qué está configurado y qué no. Solo admin: la API lo exige.
   const loadAd = () => api.get('/settings/ad').then(setAd);
   const loadGcp = () => api.get('/settings/gcp').then(setGcp);
-  useEffect(() => { loadAd(); loadGcp(); }, []);
+  useEffect(() => { if (isAdmin) { loadAd(); loadGcp(); } }, [isAdmin]);
 
   const status = { ad: Boolean(ad?.enabled && ad?.url), gcp: Boolean(gcp?.configured) };
+  const sections = SECTIONS.filter((s) => isAdmin || !s.admin);
 
   return (
     <div>
@@ -358,7 +431,7 @@ export default function SettingsPage() {
 
       <div className="settings-layout">
         <nav className="settings-nav">
-          {SECTIONS.map((s) => (
+          {sections.map((s) => (
             <button
               key={s.id}
               type="button"
@@ -377,9 +450,10 @@ export default function SettingsPage() {
         </nav>
 
         <div className="settings-content">
-          {section === 'ad' && <AdSection data={ad} onReload={loadAd} />}
-          {section === 'gcp' && <GcpSection data={gcp} onReload={loadGcp} />}
-          {section === 'system' && <SystemSection />}
+          {section === 'appearance' && <AppearanceSection />}
+          {isAdmin && section === 'ad' && <AdSection data={ad} onReload={loadAd} />}
+          {isAdmin && section === 'gcp' && <GcpSection data={gcp} onReload={loadGcp} />}
+          {isAdmin && section === 'system' && <SystemSection />}
         </div>
       </div>
     </div>

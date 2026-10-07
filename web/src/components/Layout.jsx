@@ -119,7 +119,7 @@ export default function Layout() {
     { to: '/credentials', label: 'Credenciales', Icon: IconLock, show: isAdmin },
     { to: '/users', label: 'Usuarios', Icon: IconUsers, show: isAdmin },
     { to: '/audit', label: 'Auditoría', Icon: IconAudit, show: isAdmin },
-    { to: '/settings', label: 'Ajustes', Icon: IconSettings, show: isAdmin },
+    { to: '/settings', label: 'Ajustes', Icon: IconSettings, show: true },
   ].filter((i) => i.show);
 
   const toggleSidebar = () => {

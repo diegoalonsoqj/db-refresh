@@ -118,7 +118,7 @@ export const IconLock = () => (
 export const BrandLogo = ({ size = 24 }) => (
   <svg viewBox="0 0 32 32" width={size} height={size} aria-hidden="true" className="brand-logo">
     <rect width="32" height="32" rx="7" style={{ fill: 'var(--primary)' }} />
-    <g fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <g fill="none" style={{ stroke: 'var(--on-primary)' }} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
       <ellipse cx="13" cy="8.5" rx="7" ry="2.8" />
       <path d="M6 8.5v13c0 1.55 3.13 2.8 7 2.8M20 8.5v5M6 15c0 1.55 3.13 2.8 7 2.8" />
       <path d="M27.5 21a5.5 5.5 0 1 1-1.6-3.9M26.4 13.8v3.6h-3.6" />

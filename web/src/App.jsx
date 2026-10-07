@@ -58,14 +58,8 @@ export default function App() {
             </RequireAuth>
           }
         />
-        <Route
-          path="/settings"
-          element={
-            <RequireAuth roles={['admin']}>
-              <SettingsPage />
-            </RequireAuth>
-          }
-        />
+        {/* Ajustes: Apariencia para todos; AD/GCP/Sistema solo admin (lo filtra la página). */}
+        <Route path="/settings" element={<SettingsPage />} />
         <Route
           path="/users"
           element={
