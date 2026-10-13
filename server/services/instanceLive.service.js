@@ -7,16 +7,22 @@ import { isSystemDatabase, supportsImportUser } from '../domain/restoreMapping.j
 import { missingSqlCredentials } from '../domain/instance.js';
 import { resolveSqlConnection } from '../engines/sql/connection.js';
 import { runQuery, withConnection } from '../engines/sqlserver/mssql.client.js';
+import * as mongoClient from '../engines/mongodb/mongo.client.js';
 
 /** Estado de la instancia (encendida / detenida / mantenimiento) para avisar antes de lanzar. */
 export async function getStatus(instanceId) {
   const instance = await getInstance(instanceId);
+  // MongoDB no es Cloud SQL: no hay estado de instancia que consultar (la conexión se
+  // verifica al listar sus BDs y en el pre-check del job).
+  if (instance.engine === 'mongodb') return { running: true, state: null, reason: null };
   return csql.getInstanceStatus({ project: instance.project_id, instance: instance.instance_name });
 }
 
 /** BDs de usuario de la instancia (sin las de sistema), ordenadas por nombre. */
 export async function listDatabases(instanceId) {
   const instance = await getInstance(instanceId);
+  // MongoDB: por su conexión (driver), sin el Admin API.
+  if (instance.engine === 'mongodb') return mongoClient.listDatabases(await resolveSqlConnection(instance));
   const dbs = await csql.listDatabases({ project: instance.project_id, instance: instance.instance_name });
   return dbs
     .filter((d) => !isSystemDatabase(instance.engine, d.name))

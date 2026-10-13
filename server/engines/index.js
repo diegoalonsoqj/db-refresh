@@ -4,6 +4,7 @@ import { SqlServerAdapter } from './sqlserver/SqlServerAdapter.js';
 import { PostgresAdapter } from './postgres/PostgresAdapter.js';
 import { MySqlAdapter } from './mysql/MySqlAdapter.js';
 import { PgNativeAdapter } from './postgres/PgNativeAdapter.js';
+import { MongoAdapter } from './mongodb/MongoAdapter.js';
 import { DomainError } from '../domain/errors.js';
 
 const REGISTRY = {
@@ -13,9 +14,12 @@ const REGISTRY = {
 };
 
 /**
- * @param method 'import' (Cloud SQL Admin API) | 'native' (pg_restore/psql, solo PostgreSQL)
+ * @param method 'import' (Cloud SQL Admin API) | 'native' (pg_restore/psql en PostgreSQL;
+ *               mongorestore en MongoDB, que solo tiene este)
  */
 export function createAdapter(engine, ctx, method = 'import') {
+  // MongoDB no es Cloud SQL: siempre mongorestore (validateMapping rechaza 'import').
+  if (engine === 'mongodb') return new MongoAdapter(ctx);
   if (method === 'native') {
     if (engine !== 'postgres') {
       throw new DomainError(`Restore nativo no disponible para ${engine}`, { code: 'ENGINE_UNSUPPORTED' });
@@ -30,5 +34,5 @@ export function createAdapter(engine, ctx, method = 'import') {
 }
 
 export function supportedEngines() {
-  return Object.keys(REGISTRY);
+  return [...Object.keys(REGISTRY), 'mongodb'];
 }

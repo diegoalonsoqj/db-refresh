@@ -6,15 +6,11 @@ import { FormModal, IconButton, NewButton, PageHead } from '../components/ui.jsx
 import { IconDelete, IconEdit } from '../components/icons.jsx';
 import { useConfirm } from '../components/ConfirmDialog.jsx';
 import { useToast } from '../components/Toast.jsx';
+import { ENGINES, engineLabel } from '../lib/engines.js';
 
-// Credenciales SQL reutilizables: las usan las instancias (IP privada + credencial)
-// para ejecutar scripts pre/post. La contraseña nunca vuelve del servidor.
-const ENGINES = [
-  { key: 'sqlserver', label: 'SQL Server' },
-  { key: 'postgres', label: 'PostgreSQL' },
-  { key: 'mysql', label: 'MySQL' },
-];
-const engineLabel = (k) => ENGINES.find((e) => e.key === k)?.label ?? k;
+// Credenciales reutilizables: las usan las instancias (IP privada + credencial)
+// para scripts pre/post, el restore nativo y, en MongoDB, el restore con
+// mongorestore. La contraseña nunca vuelve del servidor.
 const empty = { name: '', engine: 'sqlserver', username: '', secretKind: 'stored', password: '', secretRef: '', description: '' };
 
 export default function CredentialsPage() {

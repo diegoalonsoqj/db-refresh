@@ -1,6 +1,7 @@
 // Reglas del mapping de un restore (backup -> BD destino [-> owner] [-> esquema]).
 // Funciones puras compartidas por el lanzamiento manual y las programadas.
 import { ValidationError } from './errors.js';
+import { assertMongoDbName, mongoArchiveFormat, MONGO_SYSTEM_DATABASES } from './mongo.js';
 
 // Nombres seguros para archivos de backup y nombres de BD (evita inyección/paths).
 const SAFE_NAME = /^[A-Za-z0-9._-]+$/;
@@ -16,6 +17,7 @@ export const SYSTEM_DATABASES = {
   sqlserver: ['master', 'model', 'msdb', 'tempdb'],
   postgres: ['postgres', 'cloudsqladmin', 'template0', 'template1'],
   mysql: ['mysql', 'information_schema', 'performance_schema', 'sys'],
+  mongodb: MONGO_SYSTEM_DATABASES,
 };
 const SYSTEM_SCHEMAS = ['pg_catalog', 'information_schema', 'pg_toast'];
 
@@ -26,10 +28,14 @@ export function isSystemDatabase(engine, name) {
 /** Motores en los que el import admite elegir el usuario (owner de lo importado). */
 export const supportsImportUser = (engine) => engine === 'postgres';
 
-// Métodos de restore: 'import' (Cloud SQL Admin API, todos los motores) |
-// 'native' (pg_restore/psql desde el VPS, solo PostgreSQL).
+// Métodos de restore: 'import' (Cloud SQL Admin API: SQL Server, PostgreSQL, MySQL) |
+// 'native' (desde el servidor de la app: pg_restore/psql en PostgreSQL, mongorestore en MongoDB).
 export const METHODS = ['import', 'native'];
-export const supportsNative = (engine) => engine === 'postgres';
+export const supportsNative = (engine) => engine === 'postgres' || engine === 'mongodb';
+// MongoDB no es Cloud SQL: no hay import por el Admin API.
+export const supportsImport = (engine) => engine !== 'mongodb';
+/** Método por defecto del motor (el único posible en MongoDB). */
+export const defaultMethod = (engine) => (supportsImport(engine) ? 'import' : 'native');
 
 /**
  * Formato de un dump para el restore nativo según su extensión:
@@ -55,7 +61,10 @@ export const NATIVE_EXTENSIONS = ['.tar', '.sql', '.gz'];
 export function validateMapping(engine, mapping, method = 'import') {
   if (!METHODS.includes(method)) throw new ValidationError(`Método de restore inválido: ${method}`);
   if (method === 'native' && !supportsNative(engine)) {
-    throw new ValidationError(`El restore nativo (pg_restore/psql) solo está disponible para PostgreSQL, no para ${engine}`);
+    throw new ValidationError(`El restore nativo solo está disponible para PostgreSQL y MongoDB, no para ${engine}`);
+  }
+  if (method === 'import' && !supportsImport(engine)) {
+    throw new ValidationError(`${engine} no se restaura con el import de Cloud SQL: usa el método nativo (mongorestore)`);
   }
   if (!Array.isArray(mapping) || mapping.length === 0) {
     throw new ValidationError('mapping vacío: indica al menos un backup -> BD');
@@ -74,7 +83,14 @@ export function validateMapping(engine, mapping, method = 'import') {
     const scope = m?.scope ?? 'database';
     if (!['database', 'schema'].includes(scope)) throw new ValidationError(`Alcance inválido: ${scope}`);
     let schemaName = null;
-    if (method === 'native') {
+    if (engine === 'mongodb') {
+      // mongorestore de un archivo de mongodump (una BD por archivo, como db-keeper).
+      if (!mongoArchiveFormat(backupFile)) {
+        throw new ValidationError(`Formato no admitido para MongoDB: ${backupFile} (usa .archive o .archive.gz de mongodump --archive)`);
+      }
+      assertMongoDbName(targetDb, 'Nombre de BD destino');
+      if (scope !== 'database') throw new ValidationError('En MongoDB se restaura la BD completa (no hay alcance por esquema)');
+    } else if (method === 'native') {
       if (!nativeDumpFormat(backupFile)) {
         throw new ValidationError(`Formato no admitido para el restore nativo: ${backupFile} (usa .tar, .sql o .sql.gz)`);
       }

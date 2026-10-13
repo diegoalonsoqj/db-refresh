@@ -1,10 +1,11 @@
-// Credenciales SQL reutilizables (catálogo): CRUD, cifrado de la contraseña y
+// Credenciales de BD (SQL y MongoDB) reutilizables (catálogo): CRUD, cifrado de la contraseña y
 // prueba de conexión. La contraseña nunca se devuelve ni se loguea.
 import * as repo from '../data/repositories/credentials.repo.js';
 import * as catalogRepo from '../data/repositories/catalog.repo.js';
 import { mapPgError } from '../data/pgErrors.js';
 import { DomainError, NotFoundError, ValidationError } from '../domain/errors.js';
 import { validateCredentialInput } from '../domain/credential.js';
+import { assertMongoHost, normalizeMongoOptions } from '../domain/mongo.js';
 import { encrypt } from '../lib/crypto.js';
 import { connectionFor, resolveSqlConnection } from '../engines/sql/connection.js';
 import { testSqlConnection } from '../engines/sql/runners.js';
@@ -85,14 +86,21 @@ async function runTest(getConn) {
   }
 }
 
-/** Prueba una credencial contra un host/puerto (p.ej. desde el formulario de instancia). */
-export async function testCredential(id, { host, port } = {}) {
-  await getCredential(id);
+/**
+ * Prueba una credencial contra un host/puerto (p.ej. desde el formulario de instancia).
+ * MongoDB: `mongoSrv` (Atlas) y `connOptions` como en la instancia.
+ */
+export async function testCredential(id, { host, port, mongoSrv, connOptions } = {}) {
+  const cred = await getCredential(id);
   const h = typeof host === 'string' ? host.trim() : '';
   if (!h) throw new ValidationError('host es obligatorio para probar la conexión');
   const p = port ? Number(port) : null;
   if (p !== null && !(Number.isInteger(p) && p > 0 && p < 65536)) throw new ValidationError(`port inválido: ${port}`);
-  return runTest(() => connectionFor({ host: h, port: p, credentialId: id }));
+  const mongo = cred.engine === 'mongodb'
+    ? { mongoSrv: mongoSrv === true, connOptions: normalizeMongoOptions(connOptions ?? {}) }
+    : {};
+  if (cred.engine === 'mongodb') assertMongoHost(h, mongo.mongoSrv);
+  return runTest(() => connectionFor({ host: h, port: p, credentialId: id, ...mongo }));
 }
 
 /** Prueba la conexión SQL guardada de una instancia del catálogo. */

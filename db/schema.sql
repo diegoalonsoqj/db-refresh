@@ -9,6 +9,10 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;   -- gen_random_uuid()
 DO $$ BEGIN
   CREATE TYPE engine_type AS ENUM ('sqlserver','postgres','mysql');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+-- MongoDB (Community y Atlas): restore nativo con mongorestore, sin Cloud SQL.
+-- (El valor nuevo no se usa en el resto de este script: ADD VALUE no es visible
+-- hasta que termina la transacción.)
+ALTER TYPE engine_type ADD VALUE IF NOT EXISTS 'mongodb';
 
 DO $$ BEGIN
   CREATE TYPE job_status AS ENUM ('pending','running','succeeded','failed','cancelled');
@@ -108,6 +112,12 @@ DO $$ BEGIN
    WHERE name LIKE 'migrada-%' AND secret_kind = 'ref'
      AND secret_ref !~ '^(sm://projects/[^/]+/secrets/[^/]+(/versions/[^/]+)?|env:[A-Za-z_][A-Za-z0-9_]*)$';
 END $$;
+-- Migración idempotente: conexión de las instancias MongoDB. `db_host` es el host
+-- (o la lista h1:27017,h2:27017 de un replica set, o el cluster SRV de Atlas);
+-- `mongo_srv` = mongodb+srv:// (Atlas); `conn_options` = opciones de la URI
+-- (lista cerrada: authSource, replicaSet, tls...). Sin efecto en los demás motores.
+ALTER TABLE gcp_instances ADD COLUMN IF NOT EXISTS mongo_srv boolean NOT NULL DEFAULT false;
+ALTER TABLE gcp_instances ADD COLUMN IF NOT EXISTS conn_options jsonb NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE TABLE IF NOT EXISTS gcp_buckets (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),

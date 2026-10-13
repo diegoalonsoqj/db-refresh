@@ -4,7 +4,7 @@ import * as catalogRepo from '../data/repositories/catalog.repo.js';
 import * as jobsRepo from '../data/repositories/jobs.repo.js';
 import { parseGsUri } from '../gcp/storage.client.js';
 import { ConflictError, NotFoundError, ValidationError } from '../domain/errors.js';
-import { validateMapping } from '../domain/restoreMapping.js';
+import { defaultMethod, validateMapping } from '../domain/restoreMapping.js';
 import { missingSqlCredentials } from '../domain/instance.js';
 import { getUserById } from '../data/repositories/users.repo.js';
 
@@ -22,7 +22,7 @@ export async function launchRestore(req) {
 
   // Validación/sanitización: método, nombres de archivo/BD, BDs de sistema, owner (solo PG),
   // alcance/esquema (solo nativo).
-  const method = req.method ?? 'import';
+  const method = req.method ?? defaultMethod(instance.engine);
   const items = validateMapping(instance.engine, req.mapping, method).map((m, idx) => ({ ...m, seq: idx + 1 }));
   // Continuar sin conexión SQL: solo con el import de Cloud SQL (el nativo restaura por SQL).
   const skipSqlOnFailure = req.skipSqlOnFailure === true;

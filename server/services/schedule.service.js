@@ -13,6 +13,7 @@ import { mapPgError } from '../data/pgErrors.js';
 import { NotFoundError, ValidationError } from '../domain/errors.js';
 import { missingSqlCredentials } from '../domain/instance.js';
 import { buildSchedule, resolveTaskMapping, validateTaskMapping } from '../domain/restoreTask.js';
+import { defaultMethod } from '../domain/restoreMapping.js';
 
 /** Carpeta base del bucket como gs:// URI. */
 export function bucketBasePath(bucket) {
@@ -39,7 +40,7 @@ async function validateInput(input) {
     throw new ValidationError(`La carpeta debe estar dentro de ${base}`);
   }
 
-  const method = input.method ?? 'import';
+  const method = input.method ?? defaultMethod(instance.engine);
   const mapping = validateTaskMapping(instance.engine, input.mapping, method);
   const skipSqlOnFailure = input.skipSqlOnFailure === true;
   if (skipSqlOnFailure && method === 'native') {

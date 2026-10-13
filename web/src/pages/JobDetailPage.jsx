@@ -5,6 +5,7 @@ import StatusBadge from '../components/StatusBadge.jsx';
 import { IconArrowLeft, IconClose } from '../components/icons.jsx';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { useConfirm } from '../components/ConfirmDialog.jsx';
+import { engineLabel, methodLabel } from '../lib/engines.js';
 
 const LEVEL_LABEL = { info: 'INFO', warning: 'WARN', error: 'ERROR' };
 // Los eventos antiguos se guardaron con emojis y separadores '===': se limpian al mostrarlos.
@@ -64,7 +65,7 @@ export default function JobDetailPage() {
   const cancelJob = async () => {
     const running = job.status === 'running';
     const msg = running
-      ? '¿Cancelar este restore?\n\nSe detendrá la operación en curso (import de Cloud SQL o pg_restore/psql). ' +
+      ? '¿Cancelar este restore?\n\nSe detendrá la operación en curso (import de Cloud SQL, pg_restore/psql o mongorestore). ' +
         'La BD que se esté restaurando en ese momento puede quedar vacía o incompleta; ' +
         'las siguientes no se tocarán y no se ejecutarán los post-scripts.'
       : '¿Cancelar este restore? Aún no ha empezado: no se modificará ninguna BD.';
@@ -105,8 +106,8 @@ export default function JobDetailPage() {
 
       <div className="card">
         <dl className="meta-grid flush">
-          <div><dt>Motor</dt><dd>{job.engine}</dd></div>
-          <div><dt>Método</dt><dd>{job.method === 'native' ? 'restore nativo (pg_restore / psql)' : 'import de Cloud SQL'}</dd></div>
+          <div><dt>Motor</dt><dd>{engineLabel(job.engine)}</dd></div>
+          <div><dt>Método</dt><dd>{methodLabel(job.engine, job.method)}</dd></div>
           <div><dt>Creado</dt><dd>{fmtDate(job.created_at)}</dd></div>
           <div><dt>Inicio</dt><dd>{fmtDate(job.started_at)}</dd></div>
           <div><dt>Fin</dt><dd>{fmtDate(job.finished_at)}</dd></div>

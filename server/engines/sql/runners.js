@@ -4,6 +4,7 @@
 import * as mssqlClient from '../sqlserver/mssql.client.js';
 import * as pgClient from '../postgres/pg.client.js';
 import * as mysqlClient from '../mysql/mysql.client.js';
+import * as mongoClient from '../mongodb/mongo.client.js';
 
 const RUNNERS = { sqlserver: mssqlClient, postgres: pgClient, mysql: mysqlClient };
 
@@ -12,8 +13,13 @@ export function sqlRunnerFor(engine) {
   return RUNNERS[engine] ?? null;
 }
 
-/** Login + SELECT 1 en la BD por defecto del motor. Lanza si falla. */
+/** Login + SELECT 1 en la BD por defecto del motor (MongoDB: ping). Lanza si falla. */
 export async function testSqlConnection(conn) {
+  // MongoDB no ejecuta scripts SQL (sin runner), pero su conexión se prueba igual.
+  if (conn.engine === 'mongodb') {
+    await mongoClient.ping(conn);
+    return;
+  }
   const runner = sqlRunnerFor(conn.engine);
   await runner.withConnection(conn, null, (handle) => runner.runBatch(handle, 'SELECT 1'));
 }

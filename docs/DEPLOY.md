@@ -27,6 +27,11 @@ sudo apt-get install -y postgresql-common
 sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
 sudo apt-get install -y postgresql-client-18
 pg_restore --version    # 18.x
+
+# MongoDB Database Tools (mongorestore) para restaurar MongoDB (Community y Atlas).
+# Paquete .deb de https://www.mongodb.com/try/download/database-tools (Ubuntu, x86_64):
+sudo apt-get install -y ./mongodb-database-tools-*.deb
+mongorestore --version  # 100.x
 ```
 
 ## 2. PostgreSQL 17
@@ -147,12 +152,15 @@ El restore por import va por el Cloud SQL Admin API y no necesita conexión SQL.
 - **Corrección de usuarios huérfanos** (SQL Server).
 - **«Borrar por SQL»** y **owner elegido con el método import** (PostgreSQL).
 - **Restore nativo** (PostgreSQL).
+- **Restore de MongoDB** (`mongorestore`): siempre, la conexión es obligatoria.
 
-Desde el VPS deben estar accesibles los puertos de las instancias que las usen (SQL Server 1433, PostgreSQL 5432, MySQL 3306). Compruébalo con *Probar conexión* en Catálogo → Instancias.
+Desde el VPS deben estar accesibles los puertos de las instancias que las usen (SQL Server 1433, PostgreSQL 5432, MySQL 3306, MongoDB 27017; en Atlas, salida a Internet por el 27017 y la IP pública del VPS en su *Network Access*). Compruébalo con *Probar conexión* en Catálogo → Instancias.
 
 **Credencial PostgreSQL** para «Borrar por SQL» y owner con import: debe ser miembro de `cloudsqlsuperuser` (los usuarios creados desde la consola de Cloud SQL lo son) y poder actuar como el owner de la BD. Si no es miembro del rol owner (p. ej. `UserVentas`), la app ejecuta `GRANT "<owner>" TO CURRENT_USER`; en PostgreSQL 16+ eso solo funciona si la credencial tiene `ADMIN` sobre ese rol. Si falla, el job lo indica: usa como credencial el propio owner o concédele el rol una vez a mano.
 
 El **restore nativo de PostgreSQL** (`pg_restore`/`psql`) usa la misma conexión: necesita el 5432 de la IP privada y una credencial con permisos para crear BDs y esquemas (`postgres` o miembro de `cloudsqlsuperuser`). Los dumps se generan con `pg_dump -Ft` (tar) o en plano (`.sql`/`.sql.gz`, mejor con `--no-owner --no-privileges`); para restaurar un solo esquema desde un `.sql`, el dump debe haberse generado con `pg_dump -n <esquema>`.
+
+**MongoDB** (Community y Atlas): el restore lo hace `mongorestore` desde el VPS con la conexión de la instancia. La credencial (motor MongoDB) necesita borrar y escribir las BD destino: `readWriteAnyDatabase` (o `readWrite` sobre cada BD destino) y, en Atlas, un usuario de base de datos con ese rol. Los backups son los de db-keeper (`mongodump --archive`, `.archive` o `.archive.gz`, una BD por archivo); si `mongorestore` no está en el PATH, indica su carpeta en `MONGO_BIN_DIR`. Servidores anteriores a MongoDB 4.2 pueden necesitar una versión anterior de las Database Tools.
 
 ### Compatibilidad de los dumps PostgreSQL
 
@@ -244,6 +252,9 @@ Si la columna de reinicios (`↺`) de `pm2 ls` sube sola, algún proceso está l
 | Restore PG: `must be owner of database … not owned by "cloudsqlsuperuser"` | La BD destino tiene otro owner y el Admin API no puede borrarla: marca **«Borrar por SQL»** en esa BD |
 | Restore PG: `permission denied for database` | El import corre como el owner elegido sin permisos sobre la BD; en versiones actuales la app le asigna la BD antes del import. Comprueba que la versión desplegada está al día y que se recargó el worker |
 | Restore PG: `unrecognized configuration parameter "transaction_timeout"` | Dump de `pg_dump` 17/18 restaurado en una instancia PostgreSQL 16 (ver *Compatibilidad de los dumps PostgreSQL*) |
+| Restore MongoDB: `No se encontró mongorestore` | Faltan las MongoDB Database Tools en el VPS o `MONGO_BIN_DIR` apunta a otra carpeta |
+| Restore MongoDB: `Authentication failed` / `not authorized` | La credencial no existe en `authSource` (por defecto `admin`) o le faltan permisos para borrar/escribir las BD destino |
+| Restore MongoDB (Atlas): timeout al conectar | La IP pública del VPS no está en *Network Access* del proyecto de Atlas |
 | Un cambio no tiene efecto en los jobs | Solo se recargó la API: haz `pm2 reload ecosystem.config.cjs --env production` (incluye el worker) |
 
 ---

@@ -129,7 +129,9 @@ export const config = {
   nativeRestore: {
     // Carpeta de los binarios (vacío = los del PATH, p.ej. postgresql-client-17 en Ubuntu).
     binDir: process.env.PG_BIN_DIR ?? '',
-    // Tiempo máximo de un pg_restore/psql (por BD/esquema).
+    // Carpeta de mongorestore (MongoDB Database Tools; vacío = el del PATH).
+    mongoBinDir: process.env.MONGO_BIN_DIR ?? '',
+    // Tiempo máximo de un pg_restore/psql/mongorestore (por BD/esquema).
     timeoutSeconds: int('NATIVE_RESTORE_TIMEOUT_SECONDS', 10800),
   },
 };

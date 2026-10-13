@@ -507,6 +507,7 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 .modal-body .stack { max-width: none; }
 
 .row.gap { gap: .6rem; }
+.row > .grow { flex: 1; min-width: 0; }
 .checkline { flex-direction: row; align-items: center; gap: .5rem; }
 .pill { font-size: .72rem; padding: .1rem .5rem; border-radius: 999px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
 .pill.on { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }
@@ -713,7 +714,8 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 /* --- Formularios en modal: rejilla de 2 columnas (patrón de db-keeper) --- */
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .9rem 1rem; align-items: start; }
 .form-grid > .full,
-.form-grid > .alert { grid-column: 1 / -1; }
+.form-grid > .alert,
+.form-grid > .form-fieldset > .full { grid-column: 1 / -1; } /* el fieldset es display:contents */
 .form-grid > .alert { margin: 0; }
 .form-grid label > input,
 .form-grid label > select,

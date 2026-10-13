@@ -7,6 +7,7 @@ import { IconDelete, IconEdit, IconPlug } from '../../components/icons.jsx';
 import InstanceModal, { TestResult } from './InstanceModal.jsx';
 import { useConfirm } from '../../components/ConfirmDialog.jsx';
 import { useToast } from '../../components/Toast.jsx';
+import { engineLabel } from '../../lib/engines.js';
 
 export default function InstancesPanel({ projects, buckets }) {
   const { has } = useAuth();
@@ -43,16 +44,16 @@ export default function InstancesPanel({ projects, buckets }) {
       </PageHead>
       <div className="table-wrap">
       <table className="table">
-        <thead><tr><th>Instancia</th><th>Motor</th><th>Conexión SQL</th><th>Proyecto</th><th>Activo</th><th /></tr></thead>
+        <thead><tr><th>Instancia</th><th>Motor</th><th>Conexión</th><th>Proyecto</th><th>Activo</th><th /></tr></thead>
         <tbody>
           {instances.map((i) => (
             <tr key={i.id}>
               <td className="mono">{i.instance_name}</td>
-              <td>{i.engine}</td>
+              <td>{engineLabel(i.engine)}</td>
               <td className="small">
                 {i.db_host && i.credential_ref ? (
                   <>
-                    <div className="mono">{i.db_host}{i.db_port ? `:${i.db_port}` : ''}</div>
+                    <div className="mono">{i.mongo_srv ? 'mongodb+srv://' : ''}{i.db_host}{i.db_port ? `:${i.db_port}` : ''}</div>
                     <div className="muted">{i.credential_name} ({i.credential_username})</div>
                   </>
                 ) : (

@@ -2,7 +2,7 @@
 import { ValidationError } from './errors.js';
 import { parseSecretRef } from '../lib/secrets.js';
 
-export const ENGINES = ['sqlserver', 'postgres', 'mysql'];
+export const ENGINES = ['sqlserver', 'postgres', 'mysql', 'mongodb'];
 export const SECRET_KINDS = ['stored', 'ref']; // contraseña cifrada en la app | referencia (sm:// / env:)
 
 const text = (v) => (typeof v === 'string' ? v.trim() : '');
@@ -55,4 +55,4 @@ export function validateCredentialInput(input = {}, existing = null) {
 }
 
 /** Puerto por defecto de cada motor. */
-export const DEFAULT_PORTS = { sqlserver: 1433, postgres: 5432, mysql: 3306 };
+export const DEFAULT_PORTS = { sqlserver: 1433, postgres: 5432, mysql: 3306, mongodb: 27017 };

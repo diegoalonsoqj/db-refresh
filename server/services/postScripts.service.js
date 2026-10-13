@@ -39,6 +39,8 @@ function validate(input = {}) {
 
 // Un script activo se ejecuta con la conexión SQL de la instancia: exigirla.
 function assertInstanceCanRun(instance, data) {
+  // Los scripts son SQL: un motor sin cliente SQL (MongoDB) no los admite.
+  if (!sqlRunnerFor(instance.engine)) throw new ValidationError(`Scripts SQL no soportados para ${instance.engine}`);
   if (!data.isActive || !missingSqlCredentials(instance).length) return;
   throw new ValidationError(
     'La instancia no tiene conexión SQL (host y credencial): configúrala en ' +

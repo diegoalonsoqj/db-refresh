@@ -1,6 +1,6 @@
 # db-refresh
 
-Sistema web para **orquestar la restauración de backups en Cloud SQL de GCP**, con soporte para tres motores destino: **SQL Server, PostgreSQL y MySQL**. Reemplaza a los scripts Python que hacían esta tarea.
+Sistema web para **orquestar la restauración de backups en Cloud SQL de GCP**, con soporte para tres motores destino: **SQL Server, PostgreSQL y MySQL**, y además restaura **MongoDB** (Community y Atlas) con `mongorestore`. Reemplaza a los scripts Python que hacían esta tarea.
 
 > Este README es la guía de instalación y operación.
 
@@ -9,6 +9,7 @@ Sistema web para **orquestar la restauración de backups en Cloud SQL de GCP**, 
 ## Características
 
 - **Restauración multi-motor** vía **Cloud SQL Admin API** (sin `gcloud` CLI): SQL Server (`.bak`), PostgreSQL / MySQL (dumps `.sql`/`.gz`).
+- **MongoDB (Community y Atlas)** con `mongorestore` desde el servidor de la app: restaura los archivos `mongodump --archive` (`.archive` / `.archive.gz`) que genera db-keeper, una BD por archivo. Lee la cabecera del archivo para saber la BD de origen (antes de borrar nada), borra la BD destino si existe y restaura con `--nsFrom/--nsTo` si el destino tiene otro nombre. Conexión `mongodb://host:puerto` (o lista de replica set) o `mongodb+srv://` (Atlas), con la credencial de la instancia; la contraseña va en un archivo `--config` temporal, nunca en los argumentos del proceso.
 - **Flujo destructivo uniforme**: se elimina la BD destino antes de restaurar (en PG/MySQL se recrea vacía antes del import). Solo se tocan las BD incluidas en el restore.
 - **Borrar por SQL** (PostgreSQL, opción por BD): borra la BD existente con `DROP DATABASE … WITH (FORCE)` y la credencial de la instancia en lugar del Admin API. Necesario cuando su owner no es `cloudsqlsuperuser` (p. ej. BD creadas por otra herramienta con su propio usuario), porque el Admin API no puede borrarlas.
 - **Pre-check antes de borrar nada**: valida que existan todos los backups, espera a que la instancia no tenga operaciones en curso (backup automático, otro import) y prueba la conexión para los scripts pre/post. Si falla, el job termina sin tocar ninguna BD.
@@ -41,7 +42,7 @@ Sistema web para **orquestar la restauración de backups en Cloud SQL de GCP**, 
 - **Worker** (`npm run worker`) — toma jobs pendientes y los ejecuta.
 - **Scheduler** (`npm run scheduler`) — encola jobs según `scheduled_restores`.
 
-**Adaptadores por motor** (patrón Strategy): `SqlServerAdapter`, `PostgresAdapter`, `MySqlAdapter` (estos dos sobre una base `SqlDumpAdapter`).
+**Adaptadores por motor** (patrón Strategy): `SqlServerAdapter`, `PostgresAdapter`, `MySqlAdapter` (estos dos sobre una base `SqlDumpAdapter`), `PgNativeAdapter` (pg_restore/psql) y `MongoAdapter` (mongorestore).
 
 ---
 
@@ -178,6 +179,8 @@ clave:   P4$$w0rD
 1. **Catálogo** (admin): crea *Proyecto* → *Instancia* (nombre de la instancia de Cloud SQL y motor) → *Bucket* (nombre + carpeta, p.ej. bucket `bucket-backups`, prefijo `homologaciones`; también acepta pegar `gs://bucket-backups/homologaciones`), y **vincula** el bucket a la instancia (marcándolo por defecto). Se listan los backups que están directamente en esa carpeta. Opcional: **Scripts** de la instancia (SQL a ejecutar antes y/o después de restaurar, en SQL Server, PostgreSQL y MySQL); solo ellos necesitan la **conexión SQL** de la instancia: su **IP privada** y una **credencial** del módulo **Credenciales** (usuario + contraseña cifrada en la app o referencia a Secret Manager), con botón *Probar conexión*. El restore va por el Cloud SQL Admin API y no la usa.
    - `secret_ref` es una **referencia** al password del usuario admin, nunca el password: `sm://projects/<p>/secrets/<s>[/versions/<v>]` (Secret Manager, leído con la SA de Ajustes, que necesita `Secret Manager Secret Accessor`) o `env:NOMBRE` (variable de entorno, para dev). Solo se usa para los scripts pre/post.
 2. **Lanzar restore** (operator/admin): elige instancia → bucket → *Listar backups* → mapea cada backup a su BD destino → **Restaurar**. Si la carpeta del bucket tiene subcarpetas, se navega por ellas (migas de pan) hasta la que contiene los backups. La BD destino se elige de la lista de BDs reales de la instancia (se marca *existe · se reemplaza*) o se escribe un nombre nuevo; no se permite restaurar sobre BDs de sistema. En **PostgreSQL** se puede elegir el **owner** (usuario de la instancia con el que se importa): los objetos y la BD quedan a su nombre. La BD se le asigna por SQL (`ALTER DATABASE … OWNER`) antes del import, así que requiere la conexión SQL de la instancia; para volver a reemplazar esa BD hay que marcar **«Borrar por SQL»**, porque el Admin API no borra BD cuyo owner no es `cloudsqlsuperuser`. Las listas se leen con la service account por el Admin API, sin usuario/contraseña SQL. En instancias **PostgreSQL** se puede elegir el **método**: *Import de Cloud SQL* o *Restore nativo* (`pg_restore` para dumps `.tar` de `pg_dump -Ft`, `psql` para `.sql`/`.sql.gz`), que permite restaurar la **BD completa** o **solo un esquema** (se elimina con `DROP SCHEMA … CASCADE` y se restaura; con `.tar` se pueden leer los esquemas del dump). El restore nativo necesita la conexión SQL de la instancia y `postgresql-client` en el servidor. En **SQL Server** cada BD tiene la opción **«Usuarios huérfanos»**: tras restaurarla, remapea sus usuarios al login del mismo nombre, reporta los que no tienen login y, si se elige, asigna el owner de la BD (necesita la conexión SQL de la instancia).
+
+   **MongoDB**: en Catálogo la instancia es el servidor o cluster (no es Cloud SQL), con **conexión obligatoria**: host (o `h1:27017,h2:27017`), o el cluster de **Atlas** marcando *SRV*; opciones de la URI (`replicaSet`, `tls`, `authSource`…) y una credencial de motor MongoDB. Se puede pegar la cadena de conexión de Atlas para completar los campos (la contraseña se ignora: va en la credencial). Las tareas de MongoDB usan siempre `mongorestore`, con BD completa y sin scripts pre/post. Requiere las **MongoDB Database Tools** (`mongorestore` 100.x) en el servidor (`MONGO_BIN_DIR` si no están en el PATH) y un usuario que pueda borrar y escribir las BD destino (p. ej. `readWriteAnyDatabase`).
 3. **Progreso en vivo**: el detalle del job muestra el estado por BD y el **log en tiempo real (SSE)**.
 4. **Historial**: lista de jobs con su estado.
 5. **Programadas** (operator/admin): define un cron + mapping; el scheduler encola el job automáticamente (o "Ejecutar ya").

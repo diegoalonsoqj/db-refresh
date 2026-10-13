@@ -43,6 +43,7 @@ export async function deleteProject(id) {
 // --- Instancias ------------------------------------------------------------
 // La credencial se expone solo por nombre/usuario (nunca su secreto).
 const INSTANCE_COLS = `i.id, i.project_ref, i.instance_name, i.engine, i.db_host, i.db_port,
+            i.mongo_srv, i.conn_options,
             i.credential_ref, c.name AS credential_name, c.username AS credential_username,
             i.is_active, i.created_at, p.project_id`;
 
@@ -72,12 +73,13 @@ export async function listInstances() {
 export async function createInstance(inst) {
   const { rows } = await query(
     `INSERT INTO gcp_instances
-       (project_ref, instance_name, engine, db_host, db_port, credential_ref, is_active)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+       (project_ref, instance_name, engine, db_host, db_port, credential_ref, is_active, mongo_srv, conn_options)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING id`,
     [
       inst.projectRef, inst.instanceName, inst.engine, inst.dbHost,
       inst.dbPort ?? null, inst.credentialRef ?? null, inst.isActive ?? true,
+      inst.mongoSrv ?? false, JSON.stringify(inst.connOptions ?? {}),
     ],
   );
   return getInstanceById(rows[0].id);
@@ -87,12 +89,13 @@ export async function updateInstance(id, inst) {
   const { rows } = await query(
     `UPDATE gcp_instances
         SET project_ref = $2, instance_name = $3, engine = $4, db_host = $5,
-            db_port = $6, credential_ref = $7, is_active = $8
+            db_port = $6, credential_ref = $7, is_active = $8, mongo_srv = $9, conn_options = $10
       WHERE id = $1
       RETURNING id`,
     [
       id, inst.projectRef, inst.instanceName, inst.engine, inst.dbHost,
       inst.dbPort ?? null, inst.credentialRef ?? null, inst.isActive ?? true,
+      inst.mongoSrv ?? false, JSON.stringify(inst.connOptions ?? {}),
     ],
   );
   return rows[0] ? getInstanceById(id) : null;

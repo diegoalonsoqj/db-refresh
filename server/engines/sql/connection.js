@@ -7,6 +7,7 @@ import { DomainError, InfraError, NotFoundError } from '../../domain/errors.js';
 import { DEFAULT_PORTS } from '../../domain/credential.js';
 import { missingSqlCredentials } from '../../domain/instance.js';
 import { decrypt } from '../../lib/crypto.js';
+import { mongoLabel } from '../../domain/mongo.js';
 import { resolveSecret } from '../../lib/secrets.js';
 
 /** Contraseña en claro de una credencial (fila de getSecretById). */
@@ -24,9 +25,10 @@ export async function credentialPassword(cred) {
 
 /**
  * Conexión a partir de host/puerto y una credencial (alta de instancia, prueba).
- * @returns { engine, host, port, user, password, label }
+ * MongoDB añade `mongoSrv` (Atlas, mongodb+srv://) y `connOptions` (opciones de la URI).
+ * @returns { engine, host, port, user, password, label, mongoSrv?, connOptions? }
  */
-export async function connectionFor({ engine, host, port, credentialId }) {
+export async function connectionFor({ engine, host, port, credentialId, mongoSrv = false, connOptions = {} }) {
   const cred = await credentialsRepo.getSecretById(credentialId);
   if (!cred) throw new NotFoundError(`Credencial ${credentialId} no encontrada`);
   if (engine && cred.engine !== engine) {
@@ -35,7 +37,7 @@ export async function connectionFor({ engine, host, port, credentialId }) {
     });
   }
   const finalPort = port || DEFAULT_PORTS[cred.engine];
-  return {
+  const conn = {
     engine: cred.engine,
     host,
     port: finalPort,
@@ -43,6 +45,11 @@ export async function connectionFor({ engine, host, port, credentialId }) {
     password: await credentialPassword(cred),
     label: `${cred.username}@${host}:${finalPort}`,
   };
+  if (cred.engine === 'mongodb') {
+    Object.assign(conn, { mongoSrv: mongoSrv === true, connOptions: connOptions ?? {} });
+    conn.label = mongoLabel(conn);
+  }
+  return conn;
 }
 
 /** Conexión SQL de una instancia del catálogo. Lanza si no la tiene configurada. */
@@ -60,5 +67,7 @@ export async function resolveSqlConnection(instance) {
     host: instance.db_host,
     port: instance.db_port,
     credentialId: instance.credential_ref,
+    mongoSrv: instance.mongo_srv === true,
+    connOptions: instance.conn_options ?? {},
   });
 }

@@ -10,6 +10,7 @@ import { useConfirm } from '../components/ConfirmDialog.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { describeSchedule, fmtInZone } from '../lib/schedule.js';
 import ScheduleModal from './schedules/ScheduleModal.jsx';
+import { engineLabel } from '../lib/engines.js';
 
 /** Origen de los backups de una tarea, relativo al bucket. */
 function folderOf(t) {
@@ -68,7 +69,7 @@ export default function TasksPage() {
               <tr key={t.id}>
                 <td>
                   <div>{t.name}</div>
-                  <div className="muted small">{t.project_id} / {t.instance_name} ({t.engine}{t.method === 'native' ? ' · nativo' : ''})</div>
+                  <div className="muted small">{t.project_id} / {t.instance_name} ({engineLabel(t.engine)}{t.method === 'native' && t.engine !== 'mongodb' ? ' · nativo' : ''})</div>
                 </td>
                 <td className="mono small task-origin" title={folderOf(t)}>{folderOf(t)}</td>
                 <td>

@@ -9,9 +9,8 @@ import { config } from '../../config/index.js';
 
 const EXE = process.platform === 'win32' ? '.exe' : '';
 
-/** Ruta del binario (PG_BIN_DIR o el PATH). */
-export function toolPath(name) {
-  const dir = config.nativeRestore.binDir;
+/** Ruta del binario (PG_BIN_DIR o el PATH; `dir` para otras herramientas, p.ej. MONGO_BIN_DIR). */
+export function toolPath(name, dir = config.nativeRestore.binDir) {
   return dir ? join(dir, `${name}${EXE}`) : name;
 }
 
@@ -83,8 +82,13 @@ export async function toolVersion(name) {
  * cada línea de stderr/stdout (hasta `maxLines`; el resto solo cuenta).
  * Nunca usa shell. Resuelve { code, stdout, tail } (tail = últimas líneas).
  * Con `signal` (cancelación del job) mata el proceso y rechaza con JobCancelledError.
+ * `missingHint`: qué instalar/configurar si el binario no existe. `transformLine`
+ * limpia cada línea antes de todo lo demás (null = se descarta: no cuenta ni va a `tail`).
  */
-export function runTool({ cmd, args, env = process.env, input = null, onLine = null, timeoutMs, maxLines = 200, keepStdout = true, signal = null }) {
+export function runTool({
+  cmd, args, env = process.env, input = null, onLine = null, timeoutMs, maxLines = 200, keepStdout = true, signal = null,
+  missingHint = 'instala postgresql-client en el servidor o configura PG_BIN_DIR', transformLine = null,
+}) {
   return new Promise((resolve, reject) => {
     let child;
     try {
@@ -113,8 +117,9 @@ export function runTool({ cmd, args, env = process.env, input = null, onLine = n
     const handleChunk = (buf, isStdout) => {
       const text = buf.toString('utf8');
       if (isStdout && keepStdout) stdout += text;
-      for (const line of text.split(/\r?\n/)) {
-        if (!line.trim()) continue;
+      for (const raw of text.split(/\r?\n/)) {
+        const line = transformLine ? transformLine(raw) : raw;
+        if (!line || !line.trim()) continue;
         tail.push(line);
         if (tail.length > 20) tail.shift();
         if (onLine && emitted < maxLines) onLine(line);
@@ -137,7 +142,7 @@ export function runTool({ cmd, args, env = process.env, input = null, onLine = n
     child.on('error', (err) => {
       const missing = err.code === 'ENOENT';
       finish(() => reject(missing
-        ? new DomainError(`No se encontró ${cmd}: instala postgresql-client en el servidor o configura PG_BIN_DIR`, { code: 'NATIVE_TOOLS_MISSING' })
+        ? new DomainError(`No se encontró ${cmd}: ${missingHint}`, { code: 'NATIVE_TOOLS_MISSING' })
         : err));
     });
     child.on('close', (code) => finish(() => resolve({ code, stdout, tail, linesOmitted: Math.max(0, emitted - maxLines) })));

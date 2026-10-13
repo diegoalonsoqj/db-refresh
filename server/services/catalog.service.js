@@ -8,8 +8,9 @@ import { missingSqlCredentials } from '../domain/instance.js';
 import { assertNonEmpty, assertOneOf, optionalString } from '../lib/validation.js';
 import * as credentialsRepo from '../data/repositories/credentials.repo.js';
 import { normalizeBucketLocation } from '../gcp/storage.client.js';
+import { assertMongoHost, normalizeMongoOptions } from '../domain/mongo.js';
 
-const ENGINES = ['sqlserver', 'postgres', 'mysql']; // = enum engine_type
+const ENGINES = ['sqlserver', 'postgres', 'mysql', 'mongodb']; // = enum engine_type
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // --- Proyectos -------------------------------------------------------------
@@ -80,9 +81,22 @@ async function validateInstanceInput(input) {
       throw new ValidationError(`La credencial "${cred.name}" es de ${cred.engine}; la instancia es ${engine}`);
     }
   }
-  const dbPort = dbHost && input.dbPort ? Number(input.dbPort) : null;
+  let dbPort = dbHost && input.dbPort ? Number(input.dbPort) : null;
   if (dbPort !== null && !(Number.isInteger(dbPort) && dbPort > 0 && dbPort < 65536)) {
     throw new ValidationError(`dbPort inválido: ${input.dbPort}`);
+  }
+  // MongoDB no es Cloud SQL: el restore (mongorestore) y todo lo demás van por esta
+  // conexión, así que host y credencial son obligatorios. SRV (Atlas) no lleva puerto.
+  let mongoSrv = false;
+  let connOptions = {};
+  if (engine === 'mongodb') {
+    if (!dbHost || !credentialRef) {
+      throw new ValidationError('Una instancia MongoDB necesita host y credencial: el restore se hace con esa conexión');
+    }
+    mongoSrv = input.mongoSrv === true;
+    assertMongoHost(dbHost, mongoSrv);
+    connOptions = normalizeMongoOptions(input.connOptions ?? {});
+    if (mongoSrv || dbHost.includes(',')) dbPort = null;
   }
   return {
     projectRef,
@@ -92,6 +106,8 @@ async function validateInstanceInput(input) {
     dbPort,
     credentialRef,
     isActive: input.isActive ?? true,
+    mongoSrv,
+    connOptions,
   };
 }
 

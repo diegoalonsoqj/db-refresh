@@ -3,8 +3,9 @@
 //   VentasBD_PRD_20261002_201635.sql.gz -> VentasBD
 // Sin JSX ni dependencias: lo usan Lanzar restore y los tests (node --test).
 
-// Extensiones de backup (la más larga primero: .sql.gz antes que .gz).
-const EXT_RE = /\.(sql\.gz|sql|gz|bak|tar)$/i;
+// Extensiones de backup (la más larga primero: .sql.gz antes que .gz). MongoDB:
+// .archive / .archive.gz (mongodump --archive [--gzip]).
+const EXT_RE = /\.(archive\.gz|archive|sql\.gz|sql|gz|bak|tar)$/i;
 // Marca de tiempo final: _AAAAMMDD_HHMMSS o solo _AAAAMMDD.
 const STAMP_RE = /_\d{8}(?:_\d{6})?$/;
 // Códigos de ambiente habituales. Solo se quitan estos: un sufijo cualquiera en

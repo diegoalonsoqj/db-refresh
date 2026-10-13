@@ -6,9 +6,12 @@ import { IconAlert, IconArrowUp, IconClose, IconFolder, IconPlus, IconRefresh } 
 import { useToast } from '../components/Toast.jsx';
 import { stripBackupExt, suggestDbName } from '../lib/backupName.js';
 import { pickLatest, suggestPattern } from '../lib/schedule.js';
+import { isMongo } from '../lib/engines.js';
 
 // Extensiones que lista cada motor/método (deben coincidir con acceptedExtensions del adaptador).
-const EXTENSIONS = { sqlserver: '.bak', postgres: '.sql / .gz', mysql: '.sql / .gz', native: '.tar / .sql / .sql.gz' };
+const EXTENSIONS = {
+  sqlserver: '.bak', postgres: '.sql / .gz', mysql: '.sql / .gz', native: '.tar / .sql / .sql.gz', mongodb: '.archive / .archive.gz',
+};
 const isTar = (fileName) => String(fileName ?? '').toLowerCase().endsWith('.tar');
 const NEW_DB = '__new__';
 
@@ -86,7 +89,8 @@ export default function TaskFormPage() {
     setLiveWarn(null);
     setInstStatus(null);
     setLogins({ supported: false, logins: [] });
-    setMethod('import');
+    // MongoDB solo tiene el restore nativo (mongorestore); el resto empieza con el import.
+    setMethod(isMongo(instances.find((i) => i.id === instanceId)?.engine) ? 'native' : 'import');
     setSkipSql(false);
     if (!instanceId) return;
     const t = init.current?.instance_ref === instanceId ? init.current : null;
@@ -124,6 +128,9 @@ export default function TaskFormPage() {
 
   const instance = instances.find((i) => i.id === instanceId);
   const native = method === 'native';
+  // MongoDB: mongorestore de la BD completa (sin alcance por esquema ni owner).
+  const mongo = isMongo(instance?.engine);
+  const showScope = native && !mongo;
   // Corrección de usuarios huérfanos tras restaurar: solo SQL Server con conexión SQL.
   const orphansOn = logins.supported;
   const orphansReady = orphansOn && !logins.reason;
@@ -349,7 +356,15 @@ export default function TaskFormPage() {
             )}
             {liveWarn && instStatus?.running !== false && <div className="alert warn small full">{liveWarn}</div>}
 
-            {native && (
+            {native && mongo && (
+              <div className="alert small full warn">
+                El restore se ejecuta con mongorestore desde el servidor de la app contra{' '}
+                <span className="mono">{instance.mongo_srv ? 'mongodb+srv://' : ''}{instance.db_host}</span> con la credencial{' '}
+                {instance.credential_name}. Restaura la BD completa: si la BD destino existe se elimina antes, y si su
+                nombre es otro que el de origen, las colecciones se restauran con el nuevo nombre.
+              </div>
+            )}
+            {native && !mongo && (
               <div className={`alert small full ${nativeReady ? 'warn' : 'error'}`}>
                 {nativeReady ? (
                   <>El restore nativo se ejecuta desde el servidor de la app contra la IP privada de la instancia
@@ -416,7 +431,7 @@ export default function TaskFormPage() {
 
             {files?.length === 0 && (
               <div className="alert warn small">
-                No hay backups <span className="mono">{EXTENSIONS[native ? 'native' : instance?.engine] ?? ''}</span> en{' '}
+                No hay backups <span className="mono">{EXTENSIONS[mongo ? 'mongodb' : native ? 'native' : instance?.engine] ?? ''}</span> en{' '}
                 <span className="mono">{bucketPath}/</span>.
                 {folders.length > 0 ? ' Entra en una de las carpetas.' : ' Revisa el prefijo del bucket en el Catálogo.'}
               </div>
@@ -462,7 +477,7 @@ export default function TaskFormPage() {
             <div className="muted small">
               «Último por patrón» toma en cada ejecución el backup más reciente de la carpeta que encaje (el * es la
               fecha): es lo que sirve en tareas recurrentes. «Archivo» restaura siempre el mismo.
-              {native && ' Con alcance «Esquema» solo se reemplaza ese esquema dentro de una BD existente.'}
+              {showScope && ' Con alcance «Esquema» solo se reemplaza ese esquema dentro de una BD existente.'}
               {owners.supported && ' El owner es el rol con el que se restaura: los objetos y la BD quedan a su nombre (se asigna por SQL; requiere la conexión SQL de la instancia). Para volver a reemplazar una BD con owner propio, marca «Borrar por SQL».'}
               {isPg && ' «Borrar por SQL»: borra la BD existente con la credencial de la instancia en vez del API de GCP; márcalo si su owner no es cloudsqlsuperuser (el API no puede borrarla).'}
               {orphansOn && orphansReady && ' «Corregir huérfanos»: tras restaurar la BD, remapea sus usuarios al login del mismo nombre (los que no tengan login se reportan) y, si se elige, asigna el owner de la BD.'}
@@ -490,7 +505,7 @@ export default function TaskFormPage() {
                   <thead>
                     <tr>
                       <th>Origen</th><th>Backup</th>
-                      {native && <th>Alcance</th>}
+                      {showScope && <th>Alcance</th>}
                       <th>BD destino</th>
                       {owners.supported && <th>Owner</th>}
                       {orphansOn && <th>Usuarios huérfanos</th>}
@@ -512,7 +527,7 @@ export default function TaskFormPage() {
                             {r.source === 'latest' ? (
                               <div className="stack-tight">
                                 <input className="mono" value={r.pattern} onChange={(e) => setRow(r.key, { pattern: e.target.value })}
-                                  placeholder="VentasBD_PRD_*.sql.gz" required />
+                                  placeholder={mongo ? 'VentasBD_PRD_*.archive.gz' : 'VentasBD_PRD_*.sql.gz'} required />
                                 {files && r.pattern.trim() && (today
                                   ? <span className="field-hint">Hoy tomaría: <span className="mono">{today}</span></span>
                                   : <span className="field-hint warn-text">Ningún backup de la carpeta coincide</span>)}
@@ -526,10 +541,10 @@ export default function TaskFormPage() {
                                 {files.map((f) => <option key={f.fileName} value={f.fileName}>{f.fileName}</option>)}
                               </select>
                             ) : (
-                              <input className="mono" value={r.backupFile} onChange={(e) => setRow(r.key, { backupFile: e.target.value })} placeholder="archivo.bak" required />
+                              <input className="mono" value={r.backupFile} onChange={(e) => setRow(r.key, { backupFile: e.target.value })} placeholder={mongo ? 'archivo.archive.gz' : 'archivo.bak'} required />
                             )}
                           </td>
-                          {native && (
+                          {showScope && (
                             <td>
                               <div className="stack-tight">
                                 <select value={r.scope} onChange={(e) => setScope(r.key, e.target.value)}>

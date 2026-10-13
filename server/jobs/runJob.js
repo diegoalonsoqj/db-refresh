@@ -74,7 +74,8 @@ async function runJobSteps(job, logger, signal) {
   }
 
   const items = await jobsRepo.getJobItems(job.id);
-  const methodLabel = job.method === 'native' ? 'restore nativo (pg_restore/psql)' : 'import de Cloud SQL';
+  const methodLabel = job.engine === 'mongodb' ? 'restore con mongorestore'
+    : job.method === 'native' ? 'restore nativo (pg_restore/psql)' : 'import de Cloud SQL';
   await log('info', `Inicio de la restauración: ${items.length} BD, ${methodLabel}.`);
 
   // Aborta el job antes del primer DROP: todos los items quedan como fallidos

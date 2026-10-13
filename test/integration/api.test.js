@@ -710,3 +710,84 @@ test('RBAC: permisos en /auth/me, matriz de acceso por rol y roles personalizado
     if (roleId) await pool.query('DELETE FROM app_roles WHERE id = $1', [roleId]);
   }
 });
+
+test('MongoDB: instancia con conexión obligatoria (Community / Atlas SRV), sin scripts SQL y tareas solo nativas', async (t) => {
+  if (!dbOk) return t.skip('BD no disponible');
+  const { cookie } = await login(ADMIN, PW);
+  const proj = await req('POST', '/projects', { cookie, body: { projectId: `${PROJ}-mongo` } });
+  const ids = {};
+  try {
+    const cred = await req('POST', '/credentials', {
+      cookie, body: { name: `${PROJ}-mongo-cred`, engine: 'mongodb', username: 'restorer', password: 'Mongo-Secreta-1' },
+    });
+    assert.equal(cred.status, 201);
+    ids.cred = cred.data.id;
+    const pgCred = await req('POST', '/credentials', {
+      cookie, body: { name: `${PROJ}-mongo-pgcred`, engine: 'postgres', username: 'x', password: 'y' },
+    });
+    ids.pgCred = pgCred.data.id;
+
+    const inst = { projectRef: proj.data.id, instanceName: 'itest-mongo', engine: 'mongodb' };
+    // Sin host o sin credencial: 422 (el restore usa esa conexión).
+    assert.equal((await req('POST', '/instances', { cookie, body: inst })).status, 422);
+    assert.equal((await req('POST', '/instances', { cookie, body: { ...inst, dbHost: '10.0.0.5' } })).status, 422);
+    // Credencial de otro motor, host SRV con puerto u opción fuera de la lista: 422.
+    assert.equal((await req('POST', '/instances', { cookie, body: { ...inst, dbHost: '10.0.0.5', credentialRef: ids.pgCred } })).status, 422);
+    assert.equal((await req('POST', '/instances', {
+      cookie, body: { ...inst, dbHost: 'cluster0.abc.mongodb.net:27017', mongoSrv: true, credentialRef: ids.cred },
+    })).status, 422);
+    assert.equal((await req('POST', '/instances', {
+      cookie, body: { ...inst, dbHost: '10.0.0.5', credentialRef: ids.cred, connOptions: 'maxPoolSize=5' },
+    })).status, 422);
+
+    // Atlas (SRV): sin puerto aunque se envíe; opciones normalizadas.
+    const atlas = await req('POST', '/instances', {
+      cookie,
+      body: {
+        ...inst, dbHost: 'cluster0.abc.mongodb.net', dbPort: 27017, mongoSrv: true,
+        credentialRef: ids.cred, connOptions: 'retryWrites=true&appName=dbrefresh',
+      },
+    });
+    assert.equal(atlas.status, 201);
+    ids.inst = atlas.data.id;
+    assert.equal(atlas.data.mongo_srv, true);
+    assert.equal(atlas.data.db_port, null);
+    assert.deepEqual(atlas.data.conn_options, { retryWrites: 'true', appName: 'dbrefresh' });
+    assert.equal(JSON.stringify(atlas.data).includes('Mongo-Secreta-1'), false);
+
+    // Sin Cloud SQL: el estado no se consulta al Admin API.
+    assert.equal((await req('GET', `/instances/${ids.inst}/status`, { cookie })).data.running, true);
+    assert.equal((await req('GET', `/instances/${ids.inst}/users`, { cookie })).data.supported, false);
+    // Los scripts pre/post son SQL: no aplican a MongoDB.
+    assert.equal((await req('POST', `/instances/${ids.inst}/post-scripts`, {
+      cookie, body: { name: 'x', sqlText: 'db.x.find()', sortOrder: 1 },
+    })).status, 422);
+
+    ids.bucket = (await req('POST', '/buckets', {
+      cookie, body: { projectRef: proj.data.id, bucketName: 'itest-mongo-bucket', basePrefix: 'mongo' },
+    })).data.id;
+    const task = {
+      name: 'itest mongo', instanceRef: ids.inst, bucketRef: ids.bucket,
+      mapping: [{ source: 'latest', pattern: 'VentasBD_PRD_*.archive.gz', targetDb: 'VentasBD_QA' }],
+    };
+    // Import de Cloud SQL o archivo que no es de mongodump: 422.
+    assert.equal((await req('POST', '/schedules', { cookie, body: { ...task, method: 'import' } })).status, 422);
+    assert.equal((await req('POST', '/schedules', {
+      cookie, body: { ...task, mapping: [{ source: 'fixed', backupFile: 'v.sql.gz', targetDb: 'v' }] },
+    })).status, 422);
+    assert.equal((await req('POST', '/schedules', {
+      cookie, body: { ...task, mapping: [{ source: 'fixed', backupFile: 'v.archive', targetDb: 'admin' }] },
+    })).status, 422);
+    // Sin método: el nativo (mongorestore), el único de MongoDB.
+    const created = await req('POST', '/schedules', { cookie, body: task });
+    assert.equal(created.status, 201);
+    ids.task = created.data.id;
+    assert.equal(created.data.method, 'native');
+  } finally {
+    if (ids.task) await pool.query('DELETE FROM scheduled_restores WHERE id = $1', [ids.task]);
+    if (ids.inst) await req('DELETE', `/instances/${ids.inst}`, { cookie });
+    if (ids.bucket) await req('DELETE', `/buckets/${ids.bucket}`, { cookie });
+    for (const c of [ids.cred, ids.pgCred]) if (c) await req('DELETE', `/credentials/${c}`, { cookie });
+    await req('DELETE', `/projects/${proj.data.id}`, { cookie });
+  }
+});
