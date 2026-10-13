@@ -161,12 +161,13 @@ a { color: var(--primary); text-decoration: none; }
 .brand { display: flex; align-items: center; gap: .5rem; font-weight: 700; white-space: nowrap; }
 .brand-logo { flex: 0 0 auto; display: block; }
 
-/* Toggle circular montado a caballo del borde derecho del sidebar: la mitad
-   sobresale sobre el contenido (por eso el sidebar es overflow:visible). */
+/* Toggle circular montado a caballo del borde derecho del sidebar, arriba,
+   centrado en la franja del header (56px): la mitad sobresale sobre el
+   contenido (por eso el sidebar es overflow:visible). */
 .sidebar-toggle {
   position: absolute;
   right: -13px;
-  bottom: 22px;
+  top: 15px;
   width: 26px;
   height: 26px;
   border-radius: 50%;
@@ -188,9 +189,8 @@ a { color: var(--primary); text-decoration: none; }
 .app.collapsed .sidebar-toggle svg { transform: rotate(180deg); }
 
 /* --- Nav vertical --- */
-/* padding-bottom: deja hueco para el .sidebar-toggle, anclado abajo.
-   Sin overflow: recortaría los tooltips que salen fuera del sidebar. */
-.nav { display: flex; flex-direction: column; gap: .15rem; padding: .6rem .6rem 3.5rem; flex: 1; }
+/* Sin overflow: recortaría los tooltips que salen fuera del sidebar. */
+.nav { display: flex; flex-direction: column; gap: .15rem; padding: .6rem; flex: 1; }
 .nav a {
   display: flex;
   align-items: center;
