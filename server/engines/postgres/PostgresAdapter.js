@@ -3,8 +3,8 @@
 // viven en SqlDumpAdapter; aquí se especializa el motor y el owner de la BD.
 //
 // Nota: Cloud SQL NO importa dumps en formato custom (pg_dump -Fc, .dump); solo
-// SQL en texto plano o .gz. Los post-scripts (owner/permisos, ver
-// MODELO_HOMOLOGACIONES/scripts_extras) se ejecutan con el cliente `pg`
+// SQL en texto plano o .gz. Los post-scripts (owner/permisos) se ejecutan
+// con el cliente `pg`
 // (EngineAdapter.runPostScripts) usando la credencial SQL de la instancia.
 import { SqlDumpAdapter } from '../sqldump/SqlDumpAdapter.js';
 import { resolveSqlConnection } from '../sql/connection.js';

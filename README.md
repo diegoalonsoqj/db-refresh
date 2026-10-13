@@ -1,6 +1,6 @@
 # db-refresh
 
-Sistema web para **orquestar la restauración de backups en Cloud SQL de GCP**, con soporte para tres motores destino: **SQL Server, PostgreSQL y MySQL**. Reemplaza los scripts Python de `MODELO_HOMOLOGACIONES/` (que quedan solo como referencia).
+Sistema web para **orquestar la restauración de backups en Cloud SQL de GCP**, con soporte para tres motores destino: **SQL Server, PostgreSQL y MySQL**. Reemplaza a los scripts Python que hacían esta tarea.
 
 > Este README es la guía de instalación y operación.
 
@@ -233,7 +233,6 @@ server/
   lib/               logger, crypto, validation, audit
 web/                 React + Vite (frontend)
 test/                unitarios + integration/
-MODELO_HOMOLOGACIONES/  scripts Python originales (referencia, NO tocar)
 ```
 
 ## Estado y pendientes
