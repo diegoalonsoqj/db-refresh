@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../api/client.js';
 import { FormModal } from '../../components/ui.jsx';
+import TimezoneInput from '../../components/TimezoneInput.jsx';
 import {
   DEFAULT_TIMEZONE, WEEKDAYS, buildCron, fmtInZone, parseCron, wallClock,
 } from '../../lib/schedule.js';
@@ -14,6 +15,8 @@ function tomorrowAt21(timezone) {
 /**
  * Programación de una tarea (como db-keeper): sin programar | una vez (fecha y
  * hora) | recurrente (diaria / semanal / mensual / cron avanzado), en una zona horaria.
+ * Una tarea sin programar propone la zona de Ajustes → General (como db-keeper);
+ * una ya programada conserva la suya.
  */
 export default function ScheduleModal({ task, onClose, onSaved }) {
   const tz0 = task.timezone || DEFAULT_TIMEZONE;
@@ -28,6 +31,17 @@ export default function ScheduleModal({ task, onClose, onSaved }) {
   const [advanced, setAdvanced] = useState(task.cron_expr ?? '');
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (task.schedule_mode && task.schedule_mode !== 'none') return undefined;
+    let stop = false;
+    api.get('/settings/general').then((g) => {
+      if (stop || !g?.timezone || g.timezone === tz0) return;
+      setTimezone(g.timezone);
+      setRunAt(tomorrowAt21(g.timezone));
+    }).catch(() => {}); // sin la zona de Ajustes se queda la de la tarea
+    return () => { stop = true; };
+  }, [task.id]);
 
   const cron = mode === 'recurring' ? buildCron(freq, time, weekday, dom, advanced) : '';
 
@@ -56,7 +70,7 @@ export default function ScheduleModal({ task, onClose, onSaved }) {
         </select>
       </label>
       <label>Zona horaria
-        <input className="mono" value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder={DEFAULT_TIMEZONE} />
+        <TimezoneInput value={timezone} onChange={setTimezone} required />
       </label>
 
       {mode === 'once' && (

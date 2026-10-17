@@ -49,6 +49,15 @@ export async function changePassword(req, res, next) {
   }
 }
 
+export async function updateProfile(req, res, next) {
+  try {
+    await usersService.updateOwnProfile(req.user.id, req.body ?? {});
+    res.json({ user: await authService.getCurrentUser(req.user.id) });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export function logout(_req, res) {
   res.clearCookie(AUTH_COOKIE, { ...cookieOptions(), maxAge: undefined });
   res.json({ ok: true });

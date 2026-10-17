@@ -52,3 +52,19 @@ export async function testGcp(_req, res, next) {
     next(err);
   }
 }
+
+export async function getGeneral(_req, res, next) {
+  try {
+    res.json(await settings.getGeneralSettings());
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function putGeneral(req, res, next) {
+  try {
+    res.json(await settings.updateGeneralSettings(req.body, req.user?.id ?? null));
+  } catch (err) {
+    next(err);
+  }
+}

@@ -194,6 +194,10 @@ DO $$ BEGIN
   ALTER TABLE app_users ADD  CONSTRAINT chk_local_email CHECK (auth_source <> 'local' OR email IS NOT NULL);
 END $$;
 
+-- Foto de perfil (data URL de una imagen pequeña, la recorta el navegador). Solo
+-- se lee para /auth/me, no en los listados.
+ALTER TABLE app_users ADD COLUMN IF NOT EXISTS avatar text;
+
 -- --- Jobs de restauración --------------------------------------------------
 CREATE TABLE IF NOT EXISTS restore_jobs (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),

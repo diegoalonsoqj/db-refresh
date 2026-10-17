@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api/client.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { THEMES, useTheme } from '../theme/ThemeContext.jsx';
+import TimezoneInput from '../components/TimezoneInput.jsx';
 
 function ResultLine({ result }) {
   if (!result) return null;
@@ -228,6 +229,48 @@ function AdSection({ data, onReload, canWrite }) {
   );
 }
 
+function GeneralSection({ data, onReload, canWrite }) {
+  const [timezone, setTimezone] = useState('');
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (data) setTimezone(data.timezone); }, [data]);
+
+  const save = async (e) => {
+    e.preventDefault();
+    setBusy(true); setMsg(null);
+    try {
+      await api.put('/settings/general', { timezone: timezone.trim() });
+      setMsg({ ok: true, message: 'Zona horaria guardada' });
+      await onReload();
+    } catch (err) { setMsg({ ok: false, error: err.message }); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <form className="card stack" onSubmit={save}>
+      <SectionHead
+        title="General"
+        description="Valores por defecto de la aplicación."
+      />
+      <Field
+        label="Zona horaria"
+        hint="Se propone al programar una tarea (cada tarea guarda la suya, que se puede cambiar). Formato IANA, p.ej. America/Lima."
+      >
+        <TimezoneInput value={timezone} onChange={setTimezone} disabled={!canWrite} required />
+      </Field>
+      <div className="row gap">
+        <button className="btn primary" disabled={busy || !canWrite || !timezone.trim() || timezone.trim() === data?.timezone}>Guardar</button>
+        {!canWrite && <span className="muted small">Solo lectura: modificar requiere el permiso settings:write.</span>}
+      </div>
+      <ResultLine result={msg} />
+      <dl className="meta-grid">
+        <div><dt>Origen</dt><dd>{data?.source === 'db' ? 'Ajustes' : 'Variable SCHEDULE_TIMEZONE (por defecto)'}</dd></div>
+        <div><dt>Última actualización</dt><dd>{fmtDate(data?.updatedAt)}</dd></div>
+      </dl>
+    </form>
+  );
+}
+
 function GcpSection({ data, onReload, canWrite }) {
   const [json, setJson] = useState('');
   const [msg, setMsg] = useState(null);
@@ -406,6 +449,7 @@ function SystemSection() {
 
 const SECTIONS = [
   { id: 'appearance', label: 'Apariencia' },
+  { id: 'general', label: 'General', perm: 'settings:read' },
   { id: 'ad', label: 'AD / LDAP', perm: 'settings:read' },
   { id: 'gcp', label: 'GCP', perm: 'settings:read' },
   { id: 'system', label: 'Sistema', perm: 'settings:read' },
@@ -413,18 +457,20 @@ const SECTIONS = [
 
 export default function SettingsPage() {
   const { has } = useAuth();
-  // Apariencia es de todos; AD, GCP y Sistema se ven con settings:read y se cambian con settings:write.
+  // Apariencia es de todos; General, AD, GCP y Sistema se ven con settings:read y se cambian con settings:write.
   const canRead = has('settings:read');
   const canWrite = has('settings:write');
   const [section, setSection] = useState('appearance');
   const [ad, setAd] = useState(null);
   const [gcp, setGcp] = useState(null);
+  const [general, setGeneral] = useState(null);
 
   // Los estados viven aquí (no en cada sección) para que la nav pueda mostrar
   // de un vistazo qué está configurado y qué no.
   const loadAd = () => api.get('/settings/ad').then(setAd);
   const loadGcp = () => api.get('/settings/gcp').then(setGcp);
-  useEffect(() => { if (canRead) { loadAd(); loadGcp(); } }, [canRead]);
+  const loadGeneral = () => api.get('/settings/general').then(setGeneral);
+  useEffect(() => { if (canRead) { loadAd(); loadGcp(); loadGeneral(); } }, [canRead]);
 
   const status = { ad: Boolean(ad?.enabled && ad?.url), gcp: Boolean(gcp?.configured) };
   const sections = SECTIONS.filter((s) => !s.perm || has(s.perm));
@@ -453,6 +499,7 @@ export default function SettingsPage() {
 
         <div className="settings-content">
           {section === 'appearance' && <AppearanceSection />}
+          {canRead && section === 'general' && <GeneralSection data={general} onReload={loadGeneral} canWrite={canWrite} />}
           {canRead && section === 'ad' && <AdSection data={ad} onReload={loadAd} canWrite={canWrite} />}
           {canRead && section === 'gcp' && <GcpSection data={gcp} onReload={loadGcp} canWrite={canWrite} />}
           {canRead && section === 'system' && <SystemSection />}

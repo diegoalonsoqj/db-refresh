@@ -13,6 +13,7 @@ import {
   getUserById,
   getUserByEmailForAuth,
   getAdUserByUsername,
+  getAvatar,
 } from '../data/repositories/users.repo.js';
 import { getAdRuntimeConfig } from './settings.service.js';
 import { getUserAccess } from '../data/repositories/rbac.repo.js';
@@ -69,10 +70,10 @@ export async function login({ username, email, password }) {
   return { user: await withAccess(user), token };
 }
 
-/** Usuario público + sus roles y permisos efectivos (RBAC): la UI decide con `has(permiso)`. */
+/** Usuario público + foto + sus roles y permisos efectivos (RBAC): la UI decide con `has(permiso)`. */
 async function withAccess(user) {
-  const { roles, permissions } = await getUserAccess(user.id);
-  return { ...user, roles, permissions: [...permissions].sort() };
+  const [{ roles, permissions }, avatar] = await Promise.all([getUserAccess(user.id), getAvatar(user.id)]);
+  return { ...user, avatar, roles, permissions: [...permissions].sort() };
 }
 
 /** Usuario público actual a partir del id del token (revalida contra la BD). */

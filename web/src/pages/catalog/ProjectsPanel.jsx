@@ -49,7 +49,7 @@ export default function ProjectsPanel({ onChange }) {
       </PageHead>
       <div className="table-wrap">
       <table className="table">
-        <thead><tr><th>Project ID</th><th>Descripción</th><th /></tr></thead>
+        <thead><tr><th>Project ID</th><th>Descripción</th><th>Acciones</th></tr></thead>
         <tbody>
           {projects.map((p) => (
             <tr key={p.id}>

@@ -904,3 +904,14 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 .matrix-role-actions { display: inline-flex; gap: .15rem; margin-top: .2rem; }
 .matrix-cat td { background: var(--surface-2); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .table.matrix tfoot td { position: sticky; bottom: 0; background: var(--surface); border-top: 1px solid var(--border); }
+
+/* --- Mi perfil --- */
+.avatar { overflow: hidden; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avatar.avatar-lg { flex-basis: 72px; width: 72px; height: 72px; font-size: 1.4rem; }
+.profile-avatar-row { display: flex; align-items: center; gap: 1rem; }
+.profile-avatar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.profile-avatar-actions .muted { flex-basis: 100%; }
+.profile-subtitle { margin: 0; font-size: 1rem; }
+.form-actions { display: flex; justify-content: flex-end; gap: .5rem; }
+hr.sep { border: 0; border-top: 1px solid var(--border); margin: 1.25rem 0; }

@@ -53,6 +53,7 @@ router.post('/auth/login', loginLimiter, auth.login);
 router.post('/auth/logout', auth.logout);
 router.get('/auth/me', authenticate, auth.me);
 router.post('/auth/change-password', authenticate, auth.changePassword);
+router.patch('/auth/profile', authenticate, auth.updateProfile);
 
 // --- Usuarios y auditoría ---
 router.get('/users', ...can('users:read'), usersCtl.list);
@@ -76,6 +77,9 @@ router.post('/restores', ...can('tasks:run'), restore.launchRestore);
 router.post('/restores/:id/cancel', ...can('jobs:cancel'), restore.cancelJob);
 
 // --- Settings (AD/LDAP + GCP service account) ---
+// General: la zona horaria por defecto la necesita quien programa tareas (no solo settings:read).
+router.get('/settings/general', authenticate, settings.getGeneral);
+router.put('/settings/general', ...can('settings:write'), settings.putGeneral);
 router.get('/settings/ad', ...can('settings:read'), settings.getAd);
 router.put('/settings/ad', ...can('settings:write'), settings.putAd);
 router.post('/settings/ad/test', ...can('settings:write'), settings.testAd);

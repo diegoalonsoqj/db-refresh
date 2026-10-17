@@ -71,7 +71,7 @@ export default function CredentialsPage() {
           <div className="table-wrap">
           <table className="table">
             <thead>
-              <tr><th>Nombre</th><th>Motor</th><th>Usuario</th><th>Contraseña</th><th>Instancias</th><th /></tr>
+              <tr><th>Nombre</th><th>Motor</th><th>Usuario</th><th>Contraseña</th><th>Instancias</th><th>Acciones</th></tr>
             </thead>
             <tbody>
               {creds.length === 0 && <tr><td colSpan="6" className="muted">Sin credenciales.</td></tr>}

@@ -52,7 +52,7 @@ export default function BucketsPanel({ projects, onChange }) {
       </PageHead>
       <div className="table-wrap">
       <table className="table">
-        <thead><tr><th>Bucket</th><th>Prefijo</th><th>Proyecto</th><th>Activo</th><th /></tr></thead>
+        <thead><tr><th>Bucket</th><th>Prefijo</th><th>Proyecto</th><th>Activo</th><th>Acciones</th></tr></thead>
         <tbody>
           {buckets.map((b) => (
             <tr key={b.id}>

@@ -102,6 +102,17 @@ export async function updateUserFields(id, { isActive, fullName, email }) {
   return getUserById(id);
 }
 
+/** Foto de perfil (data URL) o null. Aparte de PUBLIC_COLS para no cargarla en cada petición ni en los listados. */
+export async function getAvatar(id) {
+  const { rows } = await query(`SELECT avatar FROM app_users WHERE id = $1`, [id]);
+  return rows[0]?.avatar ?? null;
+}
+
+/** Fija o quita (null) la foto de perfil. */
+export async function setAvatar(id, avatar) {
+  await query(`UPDATE app_users SET avatar = $2 WHERE id = $1`, [id, avatar]);
+}
+
 /** Fija un nuevo hash de password (auth local). */
 export async function setPasswordHash(id, passwordHash) {
   await query(`UPDATE app_users SET password_hash = $2 WHERE id = $1`, [id, passwordHash]);

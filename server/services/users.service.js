@@ -13,6 +13,8 @@ import { AD_USERNAME_RE, normalizeAdUsername } from '../auth/ldap.js';
 import { SUPERADMIN, uniqueKeys, unknownKeys } from '../domain/permissions.js';
 
 const MIN_PASSWORD = 10;
+const MAX_AVATAR_CHARS = 200_000; // ~150 KB de imagen; el navegador la reduce a 96 px
+const AVATAR_RE = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
 
 /**
  * Roles pedidos: `roles` (lista de claves, RBAC) o `role` (una clave, compatibilidad
@@ -172,6 +174,34 @@ export async function deleteUser(id, actor) {
   assertCanTouchSuperadmin(actor, user.roles, []);
   await assertKeepsSuperadmin(user, { removesSuperadmin: true });
   await repo.deleteUser(id);
+}
+
+/**
+ * Perfil propio (modal «Mi perfil», como db-keeper): nombre, email y foto.
+ * undefined = no se toca; vacío/null = se quita (el email de un local es obligatorio).
+ */
+export async function updateOwnProfile(userId, input = {}) {
+  const user = await repo.getUserById(userId);
+  if (!user) throw new NotFoundError('Usuario no encontrado');
+  const fullName = optionalFullName(input.fullName);
+  let email;
+  if (input.email !== undefined) {
+    email = optionalEmail(input.email);
+    if (user.auth_source === 'local' && !email) throw new ValidationError('El email es obligatorio para usuarios locales');
+  }
+  let avatar;
+  if (input.avatar !== undefined) {
+    avatar = input.avatar ? String(input.avatar) : null;
+    if (avatar && (avatar.length > MAX_AVATAR_CHARS || !AVATAR_RE.test(avatar))) {
+      throw new ValidationError('La foto debe ser una imagen PNG, JPEG o WebP pequeña');
+    }
+  }
+  try {
+    if (avatar !== undefined) await repo.setAvatar(userId, avatar);
+    return await repo.updateUserFields(userId, { fullName, email });
+  } catch (err) {
+    throw mapPgError(err, { entity: 'Usuario' });
+  }
 }
 
 /** Cambio de password del propio usuario autenticado (verifica el actual). */

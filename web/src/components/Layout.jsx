@@ -2,34 +2,20 @@ import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext.jsx';
 import ThemeToggle from './ThemeToggle.jsx';
-import ChangePasswordModal from './ChangePasswordModal.jsx';
+import ProfileModal from './ProfileModal.jsx';
+import Avatar from './Avatar.jsx';
+import { displayName } from '../lib/avatar.js';
+import { roleLabel } from '../lib/roles.js';
 import {
   IconDashboard, IconHistory, IconSchedule, IconCatalog, IconUsers,
-  IconAudit, IconRoles, IconSettings, IconKey, IconLogout, BrandLogo,
+  IconAudit, IconRoles, IconSettings, IconUser, IconLogout, BrandLogo,
   IconChevronLeft, IconChevronDown, IconLock,
 } from './icons.jsx';
 
 const COLLAPSE_KEY = 'dbrefresh.sidebarCollapsed';
 
-// Nombre visible de los roles de sistema; un rol personalizado se muestra por su clave.
-const ROLE_LABEL = {
-  superadmin: 'Superadmin',
-  admin: 'Administrador',
-  operator: 'Operador',
-  viewer: 'Solo lectura',
-};
-export const roleLabel = (key) => ROLE_LABEL[key] ?? key;
-
-/** Iniciales para el avatar por defecto. */
-function initialsOf(name) {
-  const parts = String(name).trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-/** Menú de usuario del header: avatar + nombre/rol, despliega contraseña y salir. */
-function UserMenu({ onChangePassword }) {
+/** Menú de usuario del header: avatar + nombre/rol, despliega «Mi perfil» y salir. */
+function UserMenu({ onProfile }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -55,7 +41,7 @@ function UserMenu({ onChangePassword }) {
 
   if (!user) return null;
 
-  const name = user.full_name || user.email || user.username;
+  const name = displayName(user);
 
   const doLogout = async () => {
     await logout();
@@ -71,7 +57,7 @@ function UserMenu({ onChangePassword }) {
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <span className="avatar">{initialsOf(name)}</span>
+        <Avatar user={user} />
         <span className="user-id">
           <strong>{name}</strong>
           <small>{(user.roles ?? []).map(roleLabel).join(' · ') || 'Sin rol'}</small>
@@ -85,18 +71,15 @@ function UserMenu({ onChangePassword }) {
             <strong>{name}</strong>
             <small>{user.email ?? user.username}{user.auth_source === 'ad' ? ' · AD' : ''}</small>
           </div>
-          {/* Los usuarios de AD cambian su contraseña en el directorio. */}
-          {user.auth_source !== 'ad' && (
-            <button
-              type="button"
-              role="menuitem"
-              className="dropdown-item"
-              onClick={() => { setOpen(false); onChangePassword(); }}
-            >
-              <IconKey />
-              Cambiar contraseña
-            </button>
-          )}
+          <button
+            type="button"
+            role="menuitem"
+            className="dropdown-item"
+            onClick={() => { setOpen(false); onProfile(); }}
+          >
+            <IconUser />
+            Mi perfil
+          </button>
           <button type="button" role="menuitem" className="dropdown-item danger" onClick={doLogout}>
             <IconLogout />
             Cerrar sesión
@@ -110,7 +93,7 @@ function UserMenu({ onChangePassword }) {
 export default function Layout() {
   const { has } = useAuth();
   const { pathname } = useLocation();
-  const [showPwd, setShowPwd] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSE_KEY) === '1');
 
   // Cada sección aparece si el usuario tiene su permiso de lectura (RBAC, como db-keeper).
@@ -177,7 +160,7 @@ export default function Layout() {
           </div>
           <div className="header-right">
             <ThemeToggle />
-            <UserMenu onChangePassword={() => setShowPwd(true)} />
+            <UserMenu onProfile={() => setShowProfile(true)} />
           </div>
         </header>
 
@@ -186,7 +169,7 @@ export default function Layout() {
         </main>
       </div>
 
-      {showPwd && <ChangePasswordModal onClose={() => setShowPwd(false)} />}
+      {showProfile && <ProfileModal onClose={() => setShowProfile(false)} />}
     </div>
   );
 }

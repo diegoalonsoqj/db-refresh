@@ -3,7 +3,7 @@
 // comparten. Disparar = resolver los patrones al backup más reciente de la
 // carpeta y encolar un restore con restore.service.launchRestore (el worker es
 // el único que ejecuta).
-import { config } from '../config/index.js';
+import { getDefaultTimezone } from './settings.service.js';
 import * as repo from '../data/repositories/schedules.repo.js';
 import * as catalogRepo from '../data/repositories/catalog.repo.js';
 import * as restoreService from './restore.service.js';
@@ -85,7 +85,7 @@ export async function getSchedule(id) {
 export async function createSchedule(input, createdBy = null) {
   const data = await validateInput(input);
   try {
-    return await repo.createSchedule({ ...data, createdBy, timezone: config.scheduler.timezone });
+    return await repo.createSchedule({ ...data, createdBy, timezone: await getDefaultTimezone() });
   } catch (err) {
     throw mapPgError(err, { entity: 'Tarea' });
   }
@@ -108,11 +108,11 @@ export async function deleteSchedule(id) {
 
 /**
  * Programa la tarea: { mode: 'none' } | { mode: 'once', runAt: 'AAAA-MM-DDTHH:MM' }
- * | { mode: 'recurring', cron }, con `timezone` opcional (por defecto la de config).
+ * | { mode: 'recurring', cron }, con `timezone` opcional (por defecto la de Ajustes → General).
  */
 export async function setTaskSchedule(id, input, now = new Date()) {
   await getSchedule(id);
-  return repo.setSchedule(id, buildSchedule(input, now, config.scheduler.timezone));
+  return repo.setSchedule(id, buildSchedule(input, now, await getDefaultTimezone()));
 }
 
 /** Carpeta efectiva de la tarea (la suya o la base del bucket). */

@@ -12,6 +12,7 @@ import { config } from '../../server/config/index.js';
 import { pool, closePool } from '../../server/data/pool.js';
 import { upsertLocalUser } from '../../server/data/repositories/users.repo.js';
 import { hashPassword } from '../../server/auth/strategies/local.js';
+import { getDefaultTimezone } from '../../server/services/settings.service.js';
 
 const ADMIN = 'itest-admin@dbrefresh.test';
 const VIEWER = 'itest-viewer@dbrefresh.test';
@@ -713,6 +714,63 @@ test('RBAC: permisos en /auth/me, matriz de acceso por rol y roles personalizado
   } finally {
     await pool.query('DELETE FROM app_users WHERE email = ANY($1)', [[OPERATOR, CUSTOM]]);
     if (roleId) await pool.query('DELETE FROM app_roles WHERE id = $1', [roleId]);
+  }
+});
+
+test('Mi perfil: nombre, email y foto propios; validaciones', async (t) => {
+  if (!dbOk) return t.skip('BD no disponible');
+  const ME = 'itest-profile@dbrefresh.test';
+  const ME2 = 'itest-profile2@dbrefresh.test';
+  await upsertLocalUser({ email: ME, fullName: 'IT Perfil', roles: ['viewer'], passwordHash: await hashPassword(PW) });
+  const { cookie } = await login(ME, PW);
+  const pixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+  try {
+    const r = await req('PATCH', '/auth/profile', { cookie, body: { fullName: 'IT Perfil 2', avatar: pixel } });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.user.full_name, 'IT Perfil 2');
+    assert.equal(r.data.user.avatar, pixel);
+    assert.ok(r.data.user.permissions.includes('jobs:read'));
+    assert.equal((await req('GET', '/auth/me', { cookie })).data.user.avatar, pixel);
+    // La foto no viaja en los listados.
+    const { cookie: root } = await login(ADMIN, PW);
+    const listed = await req('GET', `/users?q=${encodeURIComponent(ME)}`, { cookie: root });
+    assert.equal(listed.data.items[0].avatar, undefined);
+
+    assert.equal((await req('PATCH', '/auth/profile', { cookie, body: { avatar: 'data:text/html;base64,PGI+' } })).status, 422);
+    assert.equal((await req('PATCH', '/auth/profile', { cookie, body: { avatar: `${pixel}${'A'.repeat(200_000)}` } })).status, 422);
+    assert.equal((await req('PATCH', '/auth/profile', { cookie, body: { email: '' } })).status, 422);
+    assert.equal((await req('PATCH', '/auth/profile', { cookie, body: { email: ADMIN } })).status, 409);
+
+    // Cambiar el email cambia el login; quitar la foto.
+    const moved = await req('PATCH', '/auth/profile', { cookie, body: { email: ME2, avatar: null } });
+    assert.equal(moved.data.user.email, ME2);
+    assert.equal(moved.data.user.avatar, null);
+    await login(ME2, PW);
+    assert.equal((await req('PATCH', '/auth/profile', { body: { fullName: 'x' } })).status, 401);
+  } finally {
+    await pool.query('DELETE FROM app_users WHERE email = ANY($1)', [[ME, ME2]]);
+  }
+});
+
+test('Ajustes → General: zona horaria por defecto de las programaciones', async (t) => {
+  if (!dbOk) return t.skip('BD no disponible');
+  const { cookie: root } = await login(ADMIN, PW);
+  const { cookie: viewer } = await login(VIEWER, PW);
+  const prev = (await pool.query(`SELECT value FROM app_settings WHERE key = 'app.general'`)).rows[0];
+  try {
+    // Cualquier autenticado la lee (la necesita quien programa); solo settings:write la cambia.
+    const g = await req('GET', '/settings/general', { cookie: viewer });
+    assert.equal(g.status, 200);
+    assert.ok(g.data.timezone);
+    assert.equal((await req('PUT', '/settings/general', { cookie: viewer, body: { timezone: 'UTC' } })).status, 403);
+    assert.equal((await req('PUT', '/settings/general', { cookie: root, body: { timezone: 'Marte/Olympus' } })).status, 422);
+    const saved = await req('PUT', '/settings/general', { cookie: root, body: { timezone: 'America/Bogota' } });
+    assert.equal(saved.status, 200);
+    assert.deepEqual([saved.data.timezone, saved.data.source], ['America/Bogota', 'db']);
+    assert.equal((await getDefaultTimezone()), 'America/Bogota');
+  } finally {
+    if (prev) await pool.query(`UPDATE app_settings SET value = $1 WHERE key = 'app.general'`, [prev.value]);
+    else await pool.query(`DELETE FROM app_settings WHERE key = 'app.general'`);
   }
 });
 

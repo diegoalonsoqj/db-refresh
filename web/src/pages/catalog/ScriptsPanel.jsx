@@ -185,7 +185,7 @@ export default function ScriptsPanel({ instance }) {
           </PageHead>
           <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>#</th><th>Nombre</th><th>BD</th><th>Activo</th><th /></tr></thead>
+            <thead><tr><th>#</th><th>Nombre</th><th>BD</th><th>Activo</th><th>Acciones</th></tr></thead>
             <tbody>
               {visible.length === 0 && <tr><td colSpan="5" className="muted">Sin {phaseInfo.one}s.</td></tr>}
               {visible.map((s) => (

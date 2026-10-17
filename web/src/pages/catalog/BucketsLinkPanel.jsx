@@ -43,7 +43,7 @@ export default function BucketsLinkPanel({ instance, allBuckets }) {
         <>
           <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>Bucket</th><th>Default</th><th /></tr></thead>
+            <thead><tr><th>Bucket</th><th>Default</th><th>Acciones</th></tr></thead>
             <tbody>
               {linked.length === 0 && <tr><td colSpan="3" className="muted">Sin buckets vinculados.</td></tr>}
               {linked.map((b) => (

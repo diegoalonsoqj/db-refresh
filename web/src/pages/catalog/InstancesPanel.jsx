@@ -44,7 +44,7 @@ export default function InstancesPanel({ projects, buckets }) {
       </PageHead>
       <div className="table-wrap">
       <table className="table">
-        <thead><tr><th>Instancia</th><th>Motor</th><th>Conexión</th><th>Proyecto</th><th>Activo</th><th /></tr></thead>
+        <thead><tr><th>Instancia</th><th>Motor</th><th>Conexión</th><th>Proyecto</th><th>Activo</th><th>Acciones</th></tr></thead>
         <tbody>
           {instances.map((i) => (
             <tr key={i.id}>

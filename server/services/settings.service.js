@@ -11,10 +11,12 @@ import { encrypt, decrypt } from '../lib/crypto.js';
 import { invalidateGcp } from '../gcp/state.js';
 import { config } from '../config/index.js';
 import { ValidationError } from '../domain/errors.js';
+import { isValidTimezone } from '../domain/restoreTask.js';
 import { logger } from '../lib/logger.js';
 
 const AD_KEY = 'auth.ad';
 const GCP_KEY = 'gcp.service_account';
+const GENERAL_KEY = 'app.general';
 const GCP_SCOPES = ['https://www.googleapis.com/auth/cloud-platform'];
 
 // ---------------------------------------------------------------------------
@@ -276,4 +278,28 @@ export async function testGcp() {
   } catch (err) {
     return { ok: false, source: sa ? 'db' : 'adc', error: err.message ?? 'Fallo al autenticar con GCP' };
   }
+}
+
+// ---------------------------------------------------------------------------
+// General (como db-keeper): zona horaria por defecto de las programaciones
+// ---------------------------------------------------------------------------
+
+/** { timezone, source: 'db'|'env', updatedAt }. Sin fila: SCHEDULE_TIMEZONE (config). */
+export async function getGeneralSettings() {
+  const row = await getSetting(GENERAL_KEY);
+  const timezone = row?.value?.timezone;
+  if (timezone && isValidTimezone(timezone)) return { timezone, source: 'db', updatedAt: row.updated_at };
+  return { timezone: config.scheduler.timezone, source: 'env', updatedAt: null };
+}
+
+/** Zona horaria por defecto al programar una tarea. */
+export async function getDefaultTimezone() {
+  return (await getGeneralSettings()).timezone;
+}
+
+export async function updateGeneralSettings(input = {}, updatedBy = null) {
+  const timezone = String(input.timezone ?? '').trim();
+  if (!isValidTimezone(timezone)) throw new ValidationError(`Zona horaria inválida: ${timezone || '(vacía)'}`);
+  await upsertSetting(GENERAL_KEY, { timezone }, null, updatedBy);
+  return getGeneralSettings();
 }
