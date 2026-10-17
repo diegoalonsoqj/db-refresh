@@ -9,7 +9,7 @@ const wrap = (fn) => async (req, res, next) => {
   }
 };
 
-export const list = wrap(async (_req, res) => res.json(await credentials.listCredentials()));
+export const list = wrap(async (req, res) => res.json(await credentials.listCredentials(req.query)));
 export const get = wrap(async (req, res) => res.json(await credentials.getCredential(req.params.id)));
 export const create = wrap(async (req, res) =>
   res.status(201).json(await credentials.createCredential(req.body, req.user?.id)));

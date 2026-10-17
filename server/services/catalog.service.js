@@ -9,12 +9,17 @@ import { assertNonEmpty, assertOneOf, optionalString } from '../lib/validation.j
 import * as credentialsRepo from '../data/repositories/credentials.repo.js';
 import { normalizeBucketLocation } from '../gcp/storage.client.js';
 import { assertMongoHost, normalizeMongoOptions } from '../domain/mongo.js';
+import { parseListQuery, wantsPage } from '../lib/listQuery.js';
 
 const ENGINES = ['sqlserver', 'postgres', 'mysql', 'mongodb']; // = enum engine_type
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // --- Proyectos -------------------------------------------------------------
-export const listProjects = () => repo.listProjects();
+// Listados: sin `limit`, todos (selects de otros formularios); con `limit`, página
+// con búsqueda, filtros y orden (pestañas del Catálogo).
+export const listProjects = (rawQuery = {}) => (wantsPage(rawQuery)
+  ? repo.listProjectsPaged(parseListQuery(rawQuery, { sorts: repo.PROJECT_SORTS }))
+  : repo.listProjects());
 
 export async function getProject(id) {
   const p = await repo.getProjectById(id);
@@ -51,7 +56,12 @@ export async function deleteProject(id) {
 }
 
 // --- Instancias ------------------------------------------------------------
-export const listInstances = () => repo.listInstances();
+export const listInstances = (rawQuery = {}) => (wantsPage(rawQuery)
+  ? repo.listInstancesPaged(parseListQuery(rawQuery, {
+    sorts: repo.INSTANCE_SORTS,
+    filters: { engine: ENGINES, project: 'text', active: 'bool' },
+  }))
+  : repo.listInstances());
 
 export async function getInstance(id) {
   const i = await repo.getInstanceById(id);
@@ -154,7 +164,12 @@ export async function deleteInstance(id) {
 }
 
 // --- Buckets ---------------------------------------------------------------
-export const listBuckets = () => repo.listBuckets();
+export const listBuckets = (rawQuery = {}) => (wantsPage(rawQuery)
+  ? repo.listBucketsPaged(parseListQuery(rawQuery, {
+    sorts: repo.BUCKET_SORTS,
+    filters: { project: 'text', active: 'bool' },
+  }))
+  : repo.listBuckets());
 
 export async function getBucket(id) {
   const b = await repo.getBucketById(id);

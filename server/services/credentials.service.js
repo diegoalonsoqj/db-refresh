@@ -4,14 +4,21 @@ import * as repo from '../data/repositories/credentials.repo.js';
 import * as catalogRepo from '../data/repositories/catalog.repo.js';
 import { mapPgError } from '../data/pgErrors.js';
 import { DomainError, NotFoundError, ValidationError } from '../domain/errors.js';
-import { validateCredentialInput } from '../domain/credential.js';
+import { ENGINES, validateCredentialInput } from '../domain/credential.js';
+import { parseListQuery, wantsPage } from '../lib/listQuery.js';
 import { assertMongoHost, normalizeMongoOptions } from '../domain/mongo.js';
 import { encrypt } from '../lib/crypto.js';
 import { connectionFor, resolveSqlConnection } from '../engines/sql/connection.js';
 import { testSqlConnection } from '../engines/sql/runners.js';
 import { describeGcpError } from '../gcp/cloudsql.client.js';
 
-export const listCredentials = () => repo.listCredentials();
+/** Sin `limit`: todas (selects); con `limit`: página con búsqueda, filtros y orden. */
+export const listCredentials = (rawQuery = {}) => (wantsPage(rawQuery)
+  ? repo.listCredentialsPaged(parseListQuery(rawQuery, {
+    sorts: repo.CREDENTIAL_SORTS,
+    filters: { engine: ENGINES, kind: ['stored', 'ref'] },
+  }))
+  : repo.listCredentials());
 
 export async function getCredential(id) {
   const c = await repo.getCredentialById(id);

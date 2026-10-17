@@ -901,6 +901,50 @@ test('MongoDB: instancia con conexión obligatoria (Community / Atlas SRV), sin 
   }
 });
 
+test('Catálogo y credenciales: arreglo completo sin limit (selects) y página con limit', async (t) => {
+  if (!dbOk) return t.skip('BD no disponible');
+  const { cookie } = await login(ADMIN, PW);
+  const P = `${PROJ}-pg`;
+  const proj = await req('POST', '/projects', { cookie, body: { projectId: P, description: 'listados' } });
+  const projectRef = proj.data.id;
+  const credName = `${P}-cred`;
+  try {
+    const cred = await req('POST', '/credentials', {
+      cookie, body: { name: credName, engine: 'postgres', username: 'u', secretKind: 'ref', secretRef: 'env:ITEST_NOPE' },
+    });
+    await req('POST', '/instances', { cookie, body: { projectRef, instanceName: 'itest-pg-a', engine: 'postgres', dbHost: '10.0.0.9', credentialRef: cred.data.id } });
+    await req('POST', '/instances', { cookie, body: { projectRef, instanceName: 'itest-pg-b', engine: 'mysql', isActive: false } });
+    await req('POST', '/buckets', { cookie, body: { projectRef, bucketName: `${P}-bkt`, isActive: false } });
+
+    // Sin limit: arreglo como siempre (lo usan los selects de otros formularios).
+    for (const path of ['/projects', '/instances', '/buckets', '/credentials']) {
+      assert.ok(Array.isArray((await req('GET', path, { cookie })).data), path);
+    }
+    const inst = await req('GET', `/instances?limit=10&project=${P}&sort=instance&dir=desc`, { cookie });
+    assert.equal(inst.data.total, 2);
+    assert.deepEqual(inst.data.items.map((i) => i.instance_name), ['itest-pg-b', 'itest-pg-a']);
+    assert.equal((await req('GET', `/instances?limit=10&project=${P}&engine=postgres&active=true`, { cookie })).data.total, 1);
+    assert.equal((await req('GET', `/instances?limit=10&q=${credName}`, { cookie })).data.items[0].instance_name, 'itest-pg-a');
+    const page = await req('GET', `/instances?limit=1&offset=1&project=${P}`, { cookie });
+    assert.equal(page.data.items.length, 1);
+
+    assert.equal((await req('GET', `/projects?limit=10&q=${P}`, { cookie })).data.total, 1);
+    assert.equal((await req('GET', `/buckets?limit=10&project=${P}&active=false`, { cookie })).data.total, 1);
+    assert.equal((await req('GET', `/buckets?limit=10&project=${P}&active=true`, { cookie })).data.total, 0);
+    const creds = await req('GET', `/credentials?limit=10&q=${credName}&kind=ref&engine=postgres&sort=instances`, { cookie });
+    assert.equal(creds.data.items[0].instance_count, 1);
+
+    for (const bad of ['/instances?limit=10&sort=x', '/buckets?limit=10&active=si', '/credentials?limit=10&kind=x', '/projects?limit=0']) {
+      assert.equal((await req('GET', bad, { cookie })).status, 422, bad);
+    }
+  } finally {
+    await pool.query('DELETE FROM gcp_instances WHERE project_ref = $1', [projectRef]);
+    await pool.query('DELETE FROM gcp_buckets WHERE project_ref = $1', [projectRef]);
+    await pool.query('DELETE FROM gcp_projects WHERE id = $1', [projectRef]);
+    await pool.query('DELETE FROM sql_credentials WHERE name = $1', [credName]);
+  }
+});
+
 test('listados paginados (como db-keeper): {items,total}, búsqueda, filtros, orden y validación 422', async (t) => {
   if (!dbOk) return t.skip('BD no disponible');
   const { cookie } = await login(ADMIN, PW);

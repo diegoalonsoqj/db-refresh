@@ -4,16 +4,21 @@ import { useAuth } from '../../auth/AuthContext.jsx';
 import { useList } from '../../hooks/useList.js';
 import { FormModal, IconButton, NewButton, PageHead } from '../../components/ui.jsx';
 import { IconDelete, IconEdit } from '../../components/icons.jsx';
+import { EmptyRow, FilterSelect, ListToolbar, Pagination, SortTh } from '../../components/list.jsx';
+import { useListParams } from '../../hooks/useListParams.js';
 import { useConfirm } from '../../components/ConfirmDialog.jsx';
 import { useToast } from '../../components/Toast.jsx';
 
+const STATUS_OPTIONS = [{ value: 'true', label: 'Activos' }, { value: 'false', label: 'Inactivos' }];
 const empty = { projectRef: '', bucketName: '', basePrefix: '', description: '', isActive: true };
 
 export default function BucketsPanel({ projects, onChange }) {
   const { has } = useAuth();
   const confirm = useConfirm();
   const toast = useToast();
-  const { data: buckets, error, reload } = useList('/buckets');
+  const list = useListParams({ filters: ['project', 'active'], defaultSort: { key: 'project', dir: 'asc' } });
+  const { data, error, reload } = useList(`/buckets?${list.apiQuery}`);
+  const buckets = data?.items;
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(empty);
   const [formErr, setFormErr] = useState(null);
@@ -47,13 +52,26 @@ export default function BucketsPanel({ projects, onChange }) {
 
   return (
     <div className="page-fill">
-      <PageHead info={`${buckets.length} bucket(s)`}>
+      <PageHead info={`${data.total} bucket(s)`}>
         {has('catalog:write') && <NewButton onClick={openNew} disabled={!projects.length}>Nuevo bucket</NewButton>}
       </PageHead>
+      <ListToolbar search={list.q} onSearch={(q) => list.update({ q })} searchPlaceholder="Bucket, prefijo o descripción"
+        hasFilters={list.hasFilters} onClear={list.clear}>
+        <FilterSelect label="Proyecto" value={list.filters.project} onChange={(project) => list.update({ project })}
+          options={projects.map((p) => ({ value: p.project_id, label: p.project_id }))} />
+        <FilterSelect label="Estado" value={list.filters.active} onChange={(active) => list.update({ active })} options={STATUS_OPTIONS} />
+      </ListToolbar>
       <div className="table-wrap">
       <table className="table">
-        <thead><tr><th>Bucket</th><th>Prefijo</th><th>Proyecto</th><th>Activo</th><th>Acciones</th></tr></thead>
+        <thead>
+          <tr>
+            <SortTh sortKey="bucket" {...list.sortProps}>Bucket</SortTh><th>Prefijo</th>
+            <SortTh sortKey="project" {...list.sortProps}>Proyecto</SortTh>
+            <SortTh sortKey="status" {...list.sortProps}>Activo</SortTh><th>Acciones</th>
+          </tr>
+        </thead>
         <tbody>
+          {buckets.length === 0 && <EmptyRow colSpan={5} filtered={list.hasFilters}>Sin buckets.</EmptyRow>}
           {buckets.map((b) => (
             <tr key={b.id}>
               <td className="mono">{b.bucket_name}</td>
@@ -69,6 +87,7 @@ export default function BucketsPanel({ projects, onChange }) {
         </tbody>
       </table>
       </div>
+      <Pagination total={data.total} limit={list.limit} offset={list.offset} onChange={list.setPage} />
 
       {editing && (
         <FormModal

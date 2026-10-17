@@ -11,7 +11,7 @@ const wrap = (fn) => async (req, res, next) => {
 };
 
 // --- Proyectos ---
-export const listProjects = wrap(async (_req, res) => res.json(await catalog.listProjects()));
+export const listProjects = wrap(async (req, res) => res.json(await catalog.listProjects(req.query)));
 export const getProject = wrap(async (req, res) => res.json(await catalog.getProject(req.params.id)));
 export const createProject = wrap(async (req, res) => res.status(201).json(await catalog.createProject(req.body)));
 export const updateProject = wrap(async (req, res) => res.json(await catalog.updateProject(req.params.id, req.body)));
@@ -21,7 +21,7 @@ export const deleteProject = wrap(async (req, res) => {
 });
 
 // --- Instancias ---
-export const listInstances = wrap(async (_req, res) => res.json(await catalog.listInstances()));
+export const listInstances = wrap(async (req, res) => res.json(await catalog.listInstances(req.query)));
 export const getInstance = wrap(async (req, res) => res.json(await catalog.getInstance(req.params.id)));
 export const createInstance = wrap(async (req, res) => res.status(201).json(await catalog.createInstance(req.body)));
 export const updateInstance = wrap(async (req, res) => res.json(await catalog.updateInstance(req.params.id, req.body)));
@@ -36,7 +36,7 @@ export const getInstanceStatus = wrap(async (req, res) => res.json(await live.ge
 export const listInstanceLogins = wrap(async (req, res) => res.json(await live.listLogins(req.params.id)));
 
 // --- Buckets ---
-export const listBuckets = wrap(async (_req, res) => res.json(await catalog.listBuckets()));
+export const listBuckets = wrap(async (req, res) => res.json(await catalog.listBuckets(req.query)));
 export const getBucket = wrap(async (req, res) => res.json(await catalog.getBucket(req.params.id)));
 export const createBucket = wrap(async (req, res) => res.status(201).json(await catalog.createBucket(req.body)));
 export const updateBucket = wrap(async (req, res) => res.json(await catalog.updateBucket(req.params.id, req.body)));

@@ -2,6 +2,7 @@
 // Todas las queries parametrizadas. Los repos no validan reglas de negocio
 // (eso es del servicio); solo acceso a datos.
 import { query, withTransaction } from '../pool.js';
+import { SqlWhere, orderBy, pagedQuery } from '../../lib/listQuery.js';
 
 // --- Proyectos -------------------------------------------------------------
 export async function listProjects() {
@@ -9,6 +10,21 @@ export async function listProjects() {
     `SELECT id, project_id, description, created_at FROM gcp_projects ORDER BY project_id`,
   );
   return rows;
+}
+
+const PROJECT_ORDER = { projectId: 'lower(project_id)', created: 'created_at' };
+export const PROJECT_SORTS = Object.keys(PROJECT_ORDER);
+
+/** Proyectos paginados. Búsqueda: project_id y descripción. */
+export async function listProjectsPaged({ limit, offset, q, sort, dir }) {
+  return pagedQuery(query, {
+    select: 'SELECT id, project_id, description, created_at FROM gcp_projects',
+    countFrom: 'gcp_projects',
+    where: new SqlWhere().search(['project_id', 'description'], q),
+    order: orderBy(PROJECT_ORDER, sort, dir, { sort: 'projectId', dir: 'asc' }, 'id'),
+    limit,
+    offset,
+  });
 }
 
 export async function getProjectById(id) {
@@ -70,6 +86,34 @@ export async function listInstances() {
   return rows;
 }
 
+const INSTANCE_FROM = `gcp_instances i
+       JOIN gcp_projects p ON p.id = i.project_ref
+       LEFT JOIN sql_credentials c ON c.id = i.credential_ref`;
+const INSTANCE_ORDER = {
+  instance: 'lower(i.instance_name)',
+  engine: 'i.engine::text',
+  project: 'lower(p.project_id)',
+  status: 'i.is_active',
+};
+export const INSTANCE_SORTS = Object.keys(INSTANCE_ORDER);
+
+/** Instancias paginadas. Búsqueda: nombre, proyecto, host y credencial. */
+export async function listInstancesPaged({ limit, offset, q, sort, dir, filters = {} }) {
+  const where = new SqlWhere()
+    .search(['i.instance_name', 'p.project_id', 'i.db_host', 'c.name'], q)
+    .eq('i.engine::text', filters.engine)
+    .eq('p.project_id', filters.project);
+  if (filters.active !== undefined) where.add(`i.is_active = ${where.param(filters.active)}`);
+  return pagedQuery(query, {
+    select: `SELECT ${INSTANCE_COLS} FROM ${INSTANCE_FROM}`,
+    countFrom: INSTANCE_FROM,
+    where,
+    order: orderBy(INSTANCE_ORDER, sort, dir, { sort: 'project', dir: 'asc' }, 'lower(i.instance_name), i.id'),
+    limit,
+    offset,
+  });
+}
+
 export async function createInstance(inst) {
   const { rows } = await query(
     `INSERT INTO gcp_instances
@@ -128,6 +172,32 @@ export async function listBuckets() {
       ORDER BY p.project_id, b.bucket_name`,
   );
   return rows;
+}
+
+const BUCKET_FROM = 'gcp_buckets b JOIN gcp_projects p ON p.id = b.project_ref';
+const BUCKET_ORDER = {
+  bucket: 'lower(b.bucket_name)',
+  project: 'lower(p.project_id)',
+  status: 'b.is_active',
+};
+export const BUCKET_SORTS = Object.keys(BUCKET_ORDER);
+
+/** Buckets paginados. Búsqueda: nombre, prefijo, proyecto y descripción. */
+export async function listBucketsPaged({ limit, offset, q, sort, dir, filters = {} }) {
+  const where = new SqlWhere()
+    .search(['b.bucket_name', 'b.base_prefix', 'p.project_id', 'b.description'], q)
+    .eq('p.project_id', filters.project);
+  if (filters.active !== undefined) where.add(`b.is_active = ${where.param(filters.active)}`);
+  return pagedQuery(query, {
+    select: `SELECT b.id, b.project_ref, b.bucket_name, b.base_prefix, b.description,
+                    b.is_active, b.created_at, p.project_id
+               FROM ${BUCKET_FROM}`,
+    countFrom: BUCKET_FROM,
+    where,
+    order: orderBy(BUCKET_ORDER, sort, dir, { sort: 'project', dir: 'asc' }, 'lower(b.bucket_name), b.id'),
+    limit,
+    offset,
+  });
 }
 
 export async function createBucket(bucket) {

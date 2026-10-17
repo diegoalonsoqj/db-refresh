@@ -4,6 +4,8 @@ import { useAuth } from '../../auth/AuthContext.jsx';
 import { useList } from '../../hooks/useList.js';
 import { FormModal, IconButton, NewButton, PageHead } from '../../components/ui.jsx';
 import { IconDelete, IconEdit } from '../../components/icons.jsx';
+import { EmptyRow, FilterSelect, ListToolbar, Pagination, SortTh } from '../../components/list.jsx';
+import { useListParams } from '../../hooks/useListParams.js';
 import { useConfirm } from '../../components/ConfirmDialog.jsx';
 import { useToast } from '../../components/Toast.jsx';
 
@@ -13,7 +15,9 @@ export default function ProjectsPanel({ onChange }) {
   const { has } = useAuth();
   const confirm = useConfirm();
   const toast = useToast();
-  const { data: projects, error, reload } = useList('/projects');
+  const list = useListParams({ filters: [], defaultSort: { key: 'projectId', dir: 'asc' } });
+  const { data, error, reload } = useList(`/projects?${list.apiQuery}`);
+  const projects = data?.items;
   const [editing, setEditing] = useState(null); // {id?} o null
   const [form, setForm] = useState(empty);
   const [formErr, setFormErr] = useState(null);
@@ -44,13 +48,16 @@ export default function ProjectsPanel({ onChange }) {
 
   return (
     <div className="page-fill">
-      <PageHead info={`${projects.length} proyecto(s)`}>
+      <PageHead info={`${data.total} proyecto(s)`}>
         {has('catalog:write') && <NewButton onClick={openNew}>Nuevo proyecto</NewButton>}
       </PageHead>
+      <ListToolbar search={list.q} onSearch={(q) => list.update({ q })} searchPlaceholder="Project ID o descripción"
+        hasFilters={list.hasFilters} onClear={list.clear} />
       <div className="table-wrap">
       <table className="table">
-        <thead><tr><th>Project ID</th><th>Descripción</th><th>Acciones</th></tr></thead>
+        <thead><tr><SortTh sortKey="projectId" {...list.sortProps}>Project ID</SortTh><th>Descripción</th><th>Acciones</th></tr></thead>
         <tbody>
+          {projects.length === 0 && <EmptyRow colSpan={3} filtered={list.hasFilters}>Sin proyectos.</EmptyRow>}
           {projects.map((p) => (
             <tr key={p.id}>
               <td className="mono">{p.project_id}</td>
@@ -64,6 +71,7 @@ export default function ProjectsPanel({ onChange }) {
         </tbody>
       </table>
       </div>
+      <Pagination total={data.total} limit={list.limit} offset={list.offset} onChange={list.setPage} />
 
       {editing && (
         <FormModal

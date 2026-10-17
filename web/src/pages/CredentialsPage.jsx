@@ -4,6 +4,8 @@ import { useAuth } from '../auth/AuthContext.jsx';
 import { useList } from '../hooks/useList.js';
 import { FormModal, IconButton, NewButton, PageHead } from '../components/ui.jsx';
 import { IconDelete, IconEdit } from '../components/icons.jsx';
+import { EmptyRow, FilterSelect, ListToolbar, Pagination, SortTh } from '../components/list.jsx';
+import { useListParams } from '../hooks/useListParams.js';
 import { useConfirm } from '../components/ConfirmDialog.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { ENGINES, engineLabel } from '../lib/engines.js';
@@ -11,6 +13,8 @@ import { ENGINES, engineLabel } from '../lib/engines.js';
 // Credenciales reutilizables: las usan las instancias (IP privada + credencial)
 // para scripts pre/post, el restore nativo y, en MongoDB, el restore con
 // mongorestore. La contraseña nunca vuelve del servidor.
+const ENGINE_OPTIONS = ENGINES.map((e) => ({ value: e.key, label: e.label }));
+const KIND_OPTIONS = [{ value: 'stored', label: 'Cifrada en la app' }, { value: 'ref', label: 'Secret Manager / env' }];
 const empty = { name: '', engine: 'sqlserver', username: '', secretKind: 'stored', password: '', secretRef: '', description: '' };
 
 export default function CredentialsPage() {
@@ -18,7 +22,9 @@ export default function CredentialsPage() {
   const canWrite = has('credentials:write');
   const confirm = useConfirm();
   const toast = useToast();
-  const { data: creds, error, reload } = useList('/credentials');
+  const list = useListParams({ filters: ['engine', 'kind'], defaultSort: { key: 'name', dir: 'asc' } });
+  const { data, error, reload } = useList(`/credentials?${list.apiQuery}`);
+  const creds = data?.items;
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(empty);
   const [formErr, setFormErr] = useState(null);
@@ -65,16 +71,26 @@ export default function CredentialsPage() {
       {error && <div className="alert error">{error}</div>}
       {!creds ? <div className="muted">Cargando…</div> : (
         <>
-          <PageHead info={`${creds.length} credencial(es)`}>
+          <PageHead info={`${data.total} credencial(es)`}>
             {canWrite && <NewButton onClick={openNew}>Nueva credencial</NewButton>}
           </PageHead>
+          <ListToolbar search={list.q} onSearch={(q) => list.update({ q })} searchPlaceholder="Nombre, usuario o descripción"
+            hasFilters={list.hasFilters} onClear={list.clear}>
+            <FilterSelect label="Motor" value={list.filters.engine} onChange={(engine) => list.update({ engine })} options={ENGINE_OPTIONS} />
+            <FilterSelect label="Contraseña" value={list.filters.kind} onChange={(kind) => list.update({ kind })} options={KIND_OPTIONS} />
+          </ListToolbar>
           <div className="table-wrap">
           <table className="table">
             <thead>
-              <tr><th>Nombre</th><th>Motor</th><th>Usuario</th><th>Contraseña</th><th>Instancias</th><th>Acciones</th></tr>
+              <tr>
+                <SortTh sortKey="name" {...list.sortProps}>Nombre</SortTh>
+                <SortTh sortKey="engine" {...list.sortProps}>Motor</SortTh>
+                <SortTh sortKey="username" {...list.sortProps}>Usuario</SortTh><th>Contraseña</th>
+                <SortTh sortKey="instances" firstDir="desc" {...list.sortProps}>Instancias</SortTh><th>Acciones</th>
+              </tr>
             </thead>
             <tbody>
-              {creds.length === 0 && <tr><td colSpan="6" className="muted">Sin credenciales.</td></tr>}
+              {creds.length === 0 && <EmptyRow colSpan={6} filtered={list.hasFilters}>Sin credenciales.</EmptyRow>}
               {creds.map((c) => (
                 <tr key={c.id}>
                   <td>
@@ -99,6 +115,7 @@ export default function CredentialsPage() {
             </tbody>
           </table>
           </div>
+          <Pagination total={data.total} limit={list.limit} offset={list.offset} onChange={list.setPage} />
         </>
       )}
 

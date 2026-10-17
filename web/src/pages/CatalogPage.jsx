@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useList } from '../hooks/useList.js';
 import ProjectsPanel from './catalog/ProjectsPanel.jsx';
 import InstancesPanel from './catalog/InstancesPanel.jsx';
@@ -11,8 +11,12 @@ const TABS = [
 ];
 
 export default function CatalogPage() {
-  const [tab, setTab] = useState('projects');
-  // Listas compartidas para los selects/vínculos (los paneles gestionan su propio CRUD).
+  // La pestaña va en la URL junto con la búsqueda/filtros/página de su listado;
+  // al cambiar de pestaña se descartan los de la anterior.
+  const [sp, setSp] = useSearchParams();
+  const tab = TABS.some((t) => t.key === sp.get('tab')) ? sp.get('tab') : 'projects';
+  const setTab = (key) => setSp(key === 'projects' ? {} : { tab: key }, { replace: true });
+  // Listas completas para los selects/vínculos y filtros (los paneles gestionan su propio CRUD).
   const projectsL = useList('/projects');
   const bucketsL = useList('/buckets');
   const projects = projectsL.data ?? [];

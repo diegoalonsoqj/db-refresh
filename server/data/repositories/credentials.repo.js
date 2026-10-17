@@ -2,6 +2,7 @@
 // secreto: solo `has_password` / `secret_ref`. El blob cifrado solo sale por
 // getSecretById (uso interno: conexión desde el worker / prueba de conexión).
 import { query } from '../pool.js';
+import { SqlWhere, orderBy, pagedQuery } from '../../lib/listQuery.js';
 
 const PUBLIC_COLS = `c.id, c.name, c.engine, c.username, c.secret_kind, c.secret_ref, c.description,
   (c.password_enc IS NOT NULL) AS has_password, c.created_at, c.updated_at,
@@ -10,6 +11,30 @@ const PUBLIC_COLS = `c.id, c.name, c.engine, c.username, c.secret_kind, c.secret
 export async function listCredentials() {
   const { rows } = await query(`SELECT ${PUBLIC_COLS} FROM sql_credentials c ORDER BY c.name`);
   return rows;
+}
+
+const CRED_ORDER = {
+  name: 'lower(c.name)',
+  engine: 'c.engine::text',
+  username: 'lower(c.username)',
+  instances: '(SELECT count(*) FROM gcp_instances i WHERE i.credential_ref = c.id)',
+};
+export const CREDENTIAL_SORTS = Object.keys(CRED_ORDER);
+
+/** Credenciales paginadas. Búsqueda: nombre, usuario y descripción. */
+export async function listCredentialsPaged({ limit, offset, q, sort, dir, filters = {} }) {
+  const where = new SqlWhere()
+    .search(['c.name', 'c.username', 'c.description'], q)
+    .eq('c.engine::text', filters.engine)
+    .eq('c.secret_kind', filters.kind);
+  return pagedQuery(query, {
+    select: `SELECT ${PUBLIC_COLS} FROM sql_credentials c`,
+    countFrom: 'sql_credentials c',
+    where,
+    order: orderBy(CRED_ORDER, sort, dir, { sort: 'name', dir: 'asc' }, 'c.id'),
+    limit,
+    offset,
+  });
 }
 
 export async function getCredentialById(id) {

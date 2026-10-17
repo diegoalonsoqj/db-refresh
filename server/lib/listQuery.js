@@ -65,6 +65,12 @@ export function parseListQuery(query = {}, { sorts, filters = {} }) {
 }
 
 /** Escapa los comodines de LIKE (`%`, `_`) y el escape (`\`, el de PostgreSQL por defecto). */
+/**
+ * Listados que además alimentan selects (catálogo, credenciales): sin `limit` la
+ * API devuelve el arreglo completo de siempre; con `limit`, la página `{items, total}`.
+ */
+export const wantsPage = (query = {}) => query.limit !== undefined;
+
 export function escapeLike(s) {
   return s.replace(/[\\%_]/g, '\\$&');
 }
