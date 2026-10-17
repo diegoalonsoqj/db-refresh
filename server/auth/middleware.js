@@ -49,3 +49,14 @@ export function authorize(...required) {
     next();
   };
 }
+
+/** Exige AL MENOS UNO de los permisos indicados (usar tras `authenticate`). */
+export function authorizeAny(...anyOf) {
+  return (req, _res, next) => {
+    if (!req.user) return next(new AuthError());
+    if (!anyOf.some((p) => req.user.permissions.has(p))) {
+      return next(new ForbiddenError(`Falta alguno de estos permisos: ${anyOf.join(', ')}`, { code: 'FORBIDDEN' }));
+    }
+    next();
+  };
+}

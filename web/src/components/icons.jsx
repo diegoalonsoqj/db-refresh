@@ -4,7 +4,7 @@
 import {
   Activity, ArrowLeft, ArrowUp, CalendarClock, CalendarDays, CircleCheck, CircleX, Eye, LayoutDashboard, ChevronDown, ChevronLeft, CirclePlay, Database,
   FileCode2, Folder, History, KeyRound, Link2, Lock, LogOut, Moon, Pencil, Play, PlugZap, Plus,
-  RefreshCw, ScrollText, Server, Settings, Star, Sun, Trash2, TriangleAlert, Unlink, User, Users, X,
+  RefreshCw, ScrollText, Server, Settings, ShieldCheck, Star, Sun, Trash2, TriangleAlert, Unlink, User, Users, X,
 } from 'lucide-react';
 
 const icon = (Lucide) => function Icon({ size = 18 }) {
@@ -17,6 +17,7 @@ export const IconSchedule = icon(CalendarClock);
 export const IconCatalog = icon(Database);
 export const IconUsers = icon(Users);
 export const IconAudit = icon(ScrollText);
+export const IconRoles = icon(ShieldCheck);
 export const IconSettings = icon(Settings);
 export const IconServer = icon(Server);
 export const IconUser = icon(User);

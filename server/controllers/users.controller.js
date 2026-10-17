@@ -8,14 +8,14 @@ const wrap = (fn) => async (req, res, next) => {
 };
 
 export const list = wrap(async (req, res) => res.json(await users.listUsers(req.query)));
-export const create = wrap(async (req, res) => res.status(201).json(await users.createUser(req.body)));
-export const update = wrap(async (req, res) => res.json(await users.updateUser(req.params.id, req.body, req.user?.id)));
+export const create = wrap(async (req, res) => res.status(201).json(await users.createUser(req.body, req.user)));
+export const update = wrap(async (req, res) => res.json(await users.updateUser(req.params.id, req.body, req.user)));
 export const resetPassword = wrap(async (req, res) => {
   await users.resetPassword(req.params.id, req.body?.password);
   res.json({ ok: true });
 });
 export const remove = wrap(async (req, res) => {
-  await users.deleteUser(req.params.id, req.user?.id);
+  await users.deleteUser(req.params.id, req.user);
   res.status(204).end();
 });
 

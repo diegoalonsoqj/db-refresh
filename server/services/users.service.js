@@ -6,7 +6,7 @@ import * as repo from '../data/repositories/users.repo.js';
 import * as rbac from '../data/repositories/rbac.repo.js';
 import { hashPassword } from '../auth/strategies/local.js';
 import { mapPgError } from '../data/pgErrors.js';
-import { NotFoundError, ValidationError, AuthError } from '../domain/errors.js';
+import { AuthError, ForbiddenError, NotFoundError, ValidationError } from '../domain/errors.js';
 import { assertNonEmpty, assertOneOf } from '../lib/validation.js';
 import { parseListQuery } from '../lib/listQuery.js';
 import { AD_USERNAME_RE, normalizeAdUsername } from '../auth/ldap.js';
@@ -38,6 +38,25 @@ async function assertKeepsSuperadmin(user, { removesSuperadmin }) {
   }
 }
 
+/**
+ * Dar o quitar el rol superadmin equivale a gestionar roles: solo quien tiene
+ * `roles:write` (superadmin). Así un admin no puede elevar a otra cuenta.
+ */
+function assertCanTouchSuperadmin(actor, before, after) {
+  if (before.includes(SUPERADMIN) === after.includes(SUPERADMIN)) return;
+  if (!actor?.permissions?.has('roles:write')) {
+    throw new ForbiddenError('Solo quien gestiona roles puede asignar o quitar el rol superadmin');
+  }
+}
+
+/** Nombre: undefined = no se toca; vacío = se quita. */
+function optionalFullName(value) {
+  if (value === undefined) return undefined;
+  const v = typeof value === 'string' ? value.trim() : '';
+  if (v.length > 200) throw new ValidationError('El nombre es demasiado largo (máx. 200)');
+  return v || null;
+}
+
 function assertPassword(pw) {
   if (typeof pw !== 'string' || pw.length < MIN_PASSWORD) {
     throw new ValidationError(`El password debe tener al menos ${MIN_PASSWORD} caracteres`);
@@ -60,10 +79,17 @@ function optionalEmail(value) {
   return v;
 }
 
-export async function createUser(input) {
+/** Alta con roles; `isActive: false` permite crearlo ya desactivado. */
+async function created(id, input) {
+  if (input.isActive === false) return repo.updateUserFields(id, { isActive: false });
+  return repo.getUserById(id);
+}
+
+export async function createUser(input, actor) {
   const authSource = assertOneOf(input.authSource ?? 'local', SOURCES, 'authSource');
   const roles = await requestedRoles(input, { required: true });
-  const fullName = typeof input.fullName === 'string' && input.fullName.trim() ? input.fullName.trim() : null;
+  assertCanTouchSuperadmin(actor, [], roles);
+  const fullName = optionalFullName(input.fullName) ?? null;
   try {
     if (authSource === 'ad') {
       if (input.password) throw new ValidationError('Los usuarios de AD no usan password local');
@@ -75,39 +101,60 @@ export async function createUser(input) {
       }
       const id = await repo.insertAdUser({ username, email: optionalEmail(input.email), fullName });
       await rbac.setUserRoles(id, roles);
-      return repo.getUserById(id);
+      return created(id, input);
     }
     const email = assertNonEmpty(input.email, 'email');
     assertPassword(input.password);
     const passwordHash = await hashPassword(input.password);
     const id = await repo.insertLocalUser({ email, fullName, passwordHash });
     await rbac.setUserRoles(id, roles);
-    return repo.getUserById(id);
+    return created(id, input);
   } catch (err) {
     throw mapPgError(err, { entity: 'Usuario' });
   }
 }
 
-export async function updateUser(id, input, actingUserId) {
+/**
+ * Edición desde el modal de Usuarios: roles, estado, nombre, email y, para
+ * usuarios locales, un password nuevo (opcional). El tipo y la cuenta de red no cambian.
+ */
+export async function updateUser(id, input, actor) {
   const user = await repo.getUserById(id);
   if (!user) throw new NotFoundError(`Usuario ${id} no encontrado`);
 
   const roles = await requestedRoles(input);
   const isActive = input.isActive !== undefined ? Boolean(input.isActive) : undefined;
+  const fullName = optionalFullName(input.fullName);
+  let email;
+  if (input.email !== undefined) {
+    email = optionalEmail(input.email);
+    if (user.auth_source === 'local' && !email) throw new ValidationError('El email es obligatorio para usuarios locales');
+  }
+  const password = input.password ? input.password : undefined;
+  if (password !== undefined) {
+    if (user.auth_source !== 'local') throw new ValidationError('Los usuarios de AD no usan password local');
+    assertPassword(password);
+  }
 
   // Evita que un usuario se quite a sí mismo el acceso (lockout).
-  if (id === actingUserId) {
+  if (id === actor?.id) {
     if (isActive === false) throw new ValidationError('No puedes desactivar tu propia cuenta');
     if (roles !== undefined && [...roles].sort().join() !== [...user.roles].sort().join()) {
       throw new ValidationError('No puedes cambiar tus propios roles: pídeselo a otro administrador');
     }
   }
+  if (roles !== undefined) assertCanTouchSuperadmin(actor, user.roles, roles);
   await assertKeepsSuperadmin(user, {
     removesSuperadmin: isActive === false || (roles !== undefined && !roles.includes(SUPERADMIN)),
   });
 
-  if (roles !== undefined) await rbac.setUserRoles(id, roles);
-  return repo.updateUserFields(id, { isActive, fullName: input.fullName });
+  try {
+    if (roles !== undefined) await rbac.setUserRoles(id, roles);
+    if (password !== undefined) await repo.setPasswordHash(id, await hashPassword(password));
+    return await repo.updateUserFields(id, { isActive, fullName, email });
+  } catch (err) {
+    throw mapPgError(err, { entity: 'Usuario' });
+  }
 }
 
 export async function resetPassword(id, newPassword) {
@@ -118,10 +165,11 @@ export async function resetPassword(id, newPassword) {
   await repo.setPasswordHash(id, await hashPassword(newPassword));
 }
 
-export async function deleteUser(id, actingUserId) {
-  if (id === actingUserId) throw new ValidationError('No puedes eliminar tu propia cuenta');
+export async function deleteUser(id, actor) {
+  if (id === actor?.id) throw new ValidationError('No puedes eliminar tu propia cuenta');
   const user = await repo.getUserById(id);
   if (!user) throw new NotFoundError(`Usuario ${id} no encontrado`);
+  assertCanTouchSuperadmin(actor, user.roles, []);
   await assertKeepsSuperadmin(user, { removesSuperadmin: true });
   await repo.deleteUser(id);
 }

@@ -11,6 +11,7 @@ import CatalogPage from './pages/CatalogPage.jsx';
 import TasksPage from './pages/TasksPage.jsx';
 import UsersPage from './pages/UsersPage.jsx';
 import AuditPage from './pages/AuditPage.jsx';
+import RolesPage from './pages/RolesPage.jsx';
 import CredentialsPage from './pages/CredentialsPage.jsx';
 
 export default function App() {
@@ -80,6 +81,14 @@ export default function App() {
           element={
             <RequireAuth perm="users:read">
               <UsersPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/roles"
+          element={
+            <RequireAuth perm="roles:read">
+              <RolesPage />
             </RequireAuth>
           }
         />

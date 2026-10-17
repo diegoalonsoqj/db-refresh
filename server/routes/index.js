@@ -10,7 +10,7 @@ import * as postScripts from '../controllers/postScripts.controller.js';
 import * as credentials from '../controllers/credentials.controller.js';
 import * as dashboard from '../controllers/dashboard.controller.js';
 import * as roles from '../controllers/roles.controller.js';
-import { authenticate, authorize } from '../auth/middleware.js';
+import { authenticate, authorize, authorizeAny } from '../auth/middleware.js';
 import { loginLimiter } from '../middleware/rateLimit.js';
 import { pool } from '../data/pool.js';
 import { config } from '../config/index.js';
@@ -138,7 +138,8 @@ router.get('/schedules/:id/preview', ...can('tasks:write'), schedule.previewSche
 
 // --- Roles y permisos (RBAC) ---
 router.get('/permissions', ...can('roles:read'), roles.listPermissions);
-router.get('/roles', ...can('roles:read'), roles.listRoles);
+// Quien gestiona usuarios necesita la lista de roles para asignarlos.
+router.get('/roles', authenticate, authorizeAny('roles:read', 'users:write'), roles.listRoles);
 router.post('/roles', ...can('roles:write'), roles.createRole);
 router.patch('/roles/:id', ...can('roles:write'), roles.updateRole);
 router.delete('/roles/:id', ...can('roles:write'), roles.deleteRole);

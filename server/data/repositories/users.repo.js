@@ -86,14 +86,18 @@ export async function insertLocalUser({ email, fullName, passwordHash }) {
   return rows[0].id;
 }
 
-/** Actualiza estado / nombre (solo campos provistos). Los roles van por rbac.repo.setUserRoles. */
-export async function updateUserFields(id, { isActive, fullName }) {
+/**
+ * Actualiza estado / nombre / email (solo los campos provistos: `undefined` = no
+ * se toca; `null` en nombre o email = se vacía). Los roles van por rbac.repo.setUserRoles.
+ */
+export async function updateUserFields(id, { isActive, fullName, email }) {
   await query(
     `UPDATE app_users
         SET is_active = COALESCE($2, is_active),
-            full_name = COALESCE($3, full_name)
+            full_name = CASE WHEN $4 THEN $3 ELSE full_name END,
+            email     = CASE WHEN $6 THEN $5 ELSE email END
       WHERE id = $1`,
-    [id, isActive ?? null, fullName ?? null],
+    [id, isActive ?? null, fullName ?? null, fullName !== undefined, email ?? null, email !== undefined],
   );
   return getUserById(id);
 }

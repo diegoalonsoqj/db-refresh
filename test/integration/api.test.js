@@ -716,6 +716,52 @@ test('RBAC: permisos en /auth/me, matriz de acceso por rol y roles personalizado
   }
 });
 
+test('Usuarios: edición completa desde el modal (varios roles, email, nombre, password) y rol superadmin protegido', async (t) => {
+  if (!dbOk) return t.skip('BD no disponible');
+  const ADM = 'itest-adm@dbrefresh.test';
+  const TARGET = 'itest-target@dbrefresh.test';
+  const SUPER2 = 'itest-super2@dbrefresh.test';
+  const NEW_PW = 'otro-password-123';
+  const passwordHash = await hashPassword(PW);
+  await upsertLocalUser({ email: ADM, fullName: 'IT Adm', roles: ['admin'], passwordHash });
+  const target = await upsertLocalUser({ email: TARGET, fullName: 'IT Target', roles: ['viewer'], passwordHash });
+  const super2 = await upsertLocalUser({ email: SUPER2, fullName: 'IT Super2', roles: ['superadmin'], passwordHash });
+  const root = await login(ADMIN, PW);
+  const adm = await login(ADM, PW);
+  try {
+    // Quien gestiona usuarios lista los roles para asignarlos.
+    assert.equal((await req('GET', '/roles', { cookie: adm.cookie })).status, 200);
+
+    // Varios roles + nombre vaciado + password nuevo en una sola edición.
+    const r = await req('PATCH', `/users/${target.id}`, {
+      cookie: adm.cookie, body: { roles: ['viewer', 'operator'], fullName: '', password: NEW_PW },
+    });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.data.roles, ['operator', 'viewer']);
+    assert.equal(r.data.full_name, null);
+    await login(TARGET, NEW_PW);
+    assert.equal((await req('PATCH', `/users/${target.id}`, { cookie: adm.cookie, body: { password: 'corto' } })).status, 422);
+    assert.equal((await req('PATCH', `/users/${target.id}`, { cookie: adm.cookie, body: { email: '' } })).status, 422);
+    assert.equal((await req('PATCH', `/users/${target.id}`, { cookie: adm.cookie, body: { email: ADM } })).status, 409);
+
+    // Un admin no da ni quita superadmin, ni borra a un superadmin; el superadmin sí.
+    assert.equal((await req('PATCH', `/users/${target.id}`, { cookie: adm.cookie, body: { roles: ['superadmin'] } })).status, 403);
+    assert.equal((await req('PATCH', `/users/${super2.id}`, { cookie: adm.cookie, body: { roles: ['viewer'] } })).status, 403);
+    assert.equal((await req('DELETE', `/users/${super2.id}`, { cookie: adm.cookie })).status, 403);
+    assert.equal((await req('POST', '/users', { cookie: adm.cookie, body: { email: 'itest-x@dbrefresh.test', password: NEW_PW, roles: ['superadmin'] } })).status, 403);
+    assert.equal((await req('PATCH', `/users/${super2.id}`, { cookie: adm.cookie, body: { fullName: 'IT S2' } })).status, 200);
+    const promoted = await req('PATCH', `/users/${target.id}`, { cookie: root.cookie, body: { roles: ['superadmin', 'viewer'] } });
+    assert.deepEqual(promoted.data.roles, ['superadmin', 'viewer']);
+
+    // Alta ya desactivada.
+    const off = await req('POST', '/users', { cookie: adm.cookie, body: { email: 'itest-off@dbrefresh.test', password: NEW_PW, roles: ['viewer'], isActive: false } });
+    assert.equal(off.status, 201);
+    assert.equal(off.data.is_active, false);
+  } finally {
+    await pool.query('DELETE FROM app_users WHERE email = ANY($1)', [[ADM, TARGET, SUPER2, 'itest-x@dbrefresh.test', 'itest-off@dbrefresh.test']]);
+  }
+});
+
 test('MongoDB: instancia con conexión obligatoria (Community / Atlas SRV), sin scripts SQL y tareas solo nativas', async (t) => {
   if (!dbOk) return t.skip('BD no disponible');
   const { cookie } = await login(ADMIN, PW);

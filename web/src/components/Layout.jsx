@@ -5,7 +5,7 @@ import ThemeToggle from './ThemeToggle.jsx';
 import ChangePasswordModal from './ChangePasswordModal.jsx';
 import {
   IconDashboard, IconHistory, IconSchedule, IconCatalog, IconUsers,
-  IconAudit, IconSettings, IconKey, IconLogout, BrandLogo,
+  IconAudit, IconRoles, IconSettings, IconKey, IconLogout, BrandLogo,
   IconChevronLeft, IconChevronDown, IconLock,
 } from './icons.jsx';
 
@@ -121,6 +121,7 @@ export default function Layout() {
     { to: '/catalog', label: 'Catálogo', title: 'Catálogo GCP', Icon: IconCatalog, perm: 'catalog:read' },
     { to: '/credentials', label: 'Credenciales', title: 'Credenciales SQL', Icon: IconLock, perm: 'credentials:read' },
     { to: '/users', label: 'Usuarios', Icon: IconUsers, perm: 'users:read' },
+    { to: '/roles', label: 'Roles', title: 'Roles y permisos', Icon: IconRoles, perm: 'roles:read' },
     { to: '/audit', label: 'Auditoría', Icon: IconAudit, perm: 'audit:read' },
     { to: '/settings', label: 'Ajustes', Icon: IconSettings },
   ].filter((i) => !i.perm || has(i.perm));

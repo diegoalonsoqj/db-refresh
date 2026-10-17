@@ -885,3 +885,22 @@ input[type="checkbox"] { width: 16px; height: 16px; }
   .date-range-popover { flex-direction: column; }
   .date-range-presets { flex-direction: row; flex-wrap: wrap; padding: 0 0 .6rem; border-right: none; border-bottom: 1px solid var(--border); }
 }
+
+/* --- Usuarios: roles en la fila y selector del modal --- */
+.pill-list { display: flex; flex-wrap: wrap; gap: .25rem; }
+.role-picker { border: 1px solid var(--border); border-radius: var(--radius); padding: .6rem .8rem .7rem; margin: 0; display: grid; gap: .45rem; }
+.role-picker legend { padding: 0 .3rem; font-size: .85rem; color: var(--muted); }
+.role-option { flex-direction: row; align-items: flex-start; gap: .55rem; cursor: pointer; }
+.role-option input[type="checkbox"] { width: 16px; min-width: 0; flex: 0 0 auto; margin-top: .15rem; }
+.role-option.locked { cursor: default; opacity: .7; }
+.role-name { color: var(--text); }
+
+/* --- Roles: matriz permiso × rol --- */
+.table.matrix th.cell-center, .table.matrix td.cell-center { text-align: center; vertical-align: middle; }
+.table.matrix thead th { vertical-align: top; }
+.matrix-role { display: flex; flex-direction: column; align-items: center; gap: .15rem; font-weight: 600; }
+.matrix-role .small { font-weight: 400; text-transform: none; letter-spacing: normal; }
+.matrix-lock { display: inline-flex; margin-left: .3rem; color: var(--muted); vertical-align: -2px; }
+.matrix-role-actions { display: inline-flex; gap: .15rem; margin-top: .2rem; }
+.matrix-cat td { background: var(--surface-2); font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.table.matrix tfoot td { position: sticky; bottom: 0; background: var(--surface); border-top: 1px solid var(--border); }
