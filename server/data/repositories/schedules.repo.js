@@ -1,25 +1,48 @@
 // Repositorio de tareas de restore (scheduled_restores) y su programación.
 // mapping se guarda como jsonb: [{ source, backupFile|pattern, targetDb, ... }].
 import { query } from '../pool.js';
+import { SqlWhere, orderBy, pagedQuery } from '../../lib/listQuery.js';
 
 const COLS = `s.id, s.name, s.instance_ref, s.bucket_ref, s.bucket_path, s.method, s.mapping, s.skip_sql_on_failure,
               s.schedule_mode, s.cron_expr, s.run_at, s.timezone, s.is_active,
               s.created_by, s.last_run_at, s.next_run_at, s.last_job_ref, s.last_error, s.created_at`;
+
+const LIST_FROM = `scheduled_restores s
+    JOIN gcp_instances i ON i.id = s.instance_ref
+    JOIN gcp_projects  p ON p.id = i.project_ref
+    JOIN gcp_buckets   b ON b.id = s.bucket_ref
+    LEFT JOIN restore_jobs j ON j.id = s.last_job_ref`;
 
 // Para la lista: nombres de instancia/bucket y estado del último job.
 const LIST_SQL = `
   SELECT ${COLS},
          i.instance_name, i.engine, p.project_id, b.bucket_name, b.base_prefix,
          j.status AS last_job_status
-    FROM scheduled_restores s
-    JOIN gcp_instances i ON i.id = s.instance_ref
-    JOIN gcp_projects  p ON p.id = i.project_ref
-    JOIN gcp_buckets   b ON b.id = s.bucket_ref
-    LEFT JOIN restore_jobs j ON j.id = s.last_job_ref`;
+    FROM ${LIST_FROM}`;
 
-export async function listSchedules() {
-  const { rows } = await query(`${LIST_SQL} ORDER BY s.name, s.created_at`);
-  return rows;
+const LIST_ORDER = {
+  name: 'lower(s.name)',
+  instance: 'lower(i.instance_name)',
+  // Las no programadas (o inactivas) no tienen próxima: van al final.
+  next: 'CASE WHEN s.is_active THEN s.next_run_at END',
+  last: 's.last_run_at',
+};
+export const SCHEDULE_SORTS = Object.keys(LIST_ORDER);
+
+/** Tareas paginadas. Búsqueda: nombre, instancia, proyecto y carpeta. */
+export async function listSchedules({ limit, offset, q, sort, dir, filters = {} }) {
+  const where = new SqlWhere()
+    .search(['s.name', 'i.instance_name', 'p.project_id', 's.bucket_path', 'b.bucket_name'], q)
+    .eq('i.engine::text', filters.engine)
+    .eq('s.schedule_mode', filters.schedule);
+  return pagedQuery(query, {
+    select: LIST_SQL,
+    countFrom: LIST_FROM,
+    where,
+    order: orderBy(LIST_ORDER, sort, dir, { sort: 'name', dir: 'asc' }, 's.created_at, s.id'),
+    limit,
+    offset,
+  });
 }
 
 export async function getById(id) {

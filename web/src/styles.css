@@ -805,3 +805,83 @@ input[type="checkbox"] { width: 16px; height: 16px; }
 .nowrap { white-space: nowrap; }
 /* Agrupa campos para deshabilitarlos (solo lectura sin permiso) sin romper la rejilla. */
 .form-fieldset { display: contents; border: 0; padding: 0; margin: 0; }
+
+/* --- Listados (como db-keeper): búsqueda/filtros, orden por columna y paginación --- */
+.filters { display: flex; align-items: flex-end; gap: .75rem; flex-wrap: wrap; padding-bottom: .75rem; }
+.filters label { display: flex; flex-direction: column; gap: .25rem; font-size: .8rem; color: var(--muted); }
+.filters input, .filters select { font-size: .85rem; padding: .45rem .6rem; }
+.list-toolbar .list-search { flex: 1 1 16rem; max-width: 24rem; }
+.list-toolbar .list-search input { width: 100%; }
+.list-toolbar > .btn { padding-block: .45rem; }
+
+.sort-btn {
+  all: unset;
+  display: inline-flex; align-items: center; gap: .35rem;
+  cursor: pointer; color: inherit; font: inherit; white-space: nowrap;
+}
+.sort-btn:hover, .sort-btn.active { color: var(--text); }
+.sort-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 2px; }
+.sort-icon { font-size: .7em; opacity: .45; }
+.sort-btn.active .sort-icon { opacity: 1; color: var(--primary); }
+
+.pagination { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; padding-top: .75rem; font-size: .85rem; color: var(--muted); }
+.pagination-size { display: flex; align-items: center; gap: .4rem; }
+.pagination-size select { padding: .25rem .4rem; }
+.pagination-range { margin-left: auto; }
+.pagination-nav { display: flex; gap: .4rem; }
+
+/* Filtro de rango de fechas: un campo que abre el calendario. */
+.date-range { position: relative; display: flex; flex-direction: column; gap: .25rem; font-size: .8rem; color: var(--muted); }
+.date-range-field { display: flex; align-items: center; }
+.date-range-trigger {
+  display: inline-flex; align-items: center; gap: .4rem; min-width: 13rem;
+  font: inherit; font-size: .85rem; text-align: left; cursor: pointer;
+  padding: .45rem .6rem; border-radius: 8px;
+  background: var(--bg); color: var(--muted); border: 1px solid var(--border);
+}
+.date-range-trigger.has-value { color: var(--text); padding-right: 1.9rem; }
+.date-range-trigger:hover { border-color: var(--primary); }
+.date-range-clear {
+  margin-left: -1.75rem; padding: .2rem; line-height: 0; cursor: pointer;
+  background: transparent; color: var(--muted); border: none;
+}
+.date-range-clear:hover { color: var(--text); }
+.date-range-popover {
+  position: absolute; top: calc(100% + .35rem); left: 0; z-index: 30;
+  /* Ancho propio (no el del campo), para que los dos meses vayan lado a lado. */
+  width: max-content; max-width: calc(100vw - 2rem); overflow: auto;
+  display: flex; gap: .75rem; padding: .75rem;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 8px 24px var(--shadow); color: var(--text); font-size: .85rem;
+}
+.date-range-popover.right { left: auto; right: 0; }
+.date-range-presets { display: flex; flex-direction: column; gap: .35rem; padding-right: .75rem; border-right: 1px solid var(--border); }
+.date-range-presets .btn { justify-content: flex-start; white-space: nowrap; }
+.date-range-footer {
+  display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap;
+  padding-top: .5rem; border-top: 1px solid var(--border);
+}
+.date-range-actions { display: flex; gap: .4rem; flex-wrap: wrap; }
+.date-range-popover .rdp-root {
+  --rdp-accent-color: var(--primary);
+  --rdp-accent-background-color: color-mix(in srgb, var(--primary) 22%, transparent);
+  --rdp-range_middle-background-color: color-mix(in srgb, var(--primary) 16%, transparent);
+  --rdp-range_middle-color: var(--text);
+  --rdp-range_start-color: var(--on-primary);
+  --rdp-range_end-color: var(--on-primary);
+  --rdp-range_start-date-background-color: var(--primary);
+  --rdp-range_end-date-background-color: var(--primary);
+  --rdp-today-color: var(--primary);
+  --rdp-day-height: 2.1rem;
+  --rdp-day-width: 2.1rem;
+  --rdp-day_button-height: 2rem;
+  --rdp-day_button-width: 2rem;
+  --rdp-months-gap: 1.25rem;
+  margin: 0 0 .5rem;
+}
+.date-range-popover .rdp-chevron { fill: var(--primary); }
+/* En pantallas angostas los atajos van arriba, en fila. */
+@media (max-width: 720px) {
+  .date-range-popover { flex-direction: column; }
+  .date-range-presets { flex-direction: row; flex-wrap: wrap; padding: 0 0 .6rem; border-right: none; border-bottom: 1px solid var(--border); }
+}

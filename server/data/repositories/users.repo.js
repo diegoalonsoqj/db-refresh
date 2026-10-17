@@ -3,6 +3,7 @@
 // se devuelve al cliente (los servicios/controladores lo omiten).
 import { query } from '../pool.js';
 import { setUserRoles } from './rbac.repo.js';
+import { SqlWhere, orderBy, pagedQuery } from '../../lib/listQuery.js';
 
 // `roles`: claves de sus roles (RBAC). La columna heredada `role` ya no decide el acceso.
 const PUBLIC_COLS = `id, email, username, full_name, auth_source, is_active, last_login_at, created_at,
@@ -46,10 +47,32 @@ export async function touchLastLogin(id) {
   await query(`UPDATE app_users SET last_login_at = now() WHERE id = $1`, [id]);
 }
 
-/** Lista usuarios (público, sin secretos). */
-export async function listUsers() {
-  const { rows } = await query(`SELECT ${PUBLIC_COLS} FROM app_users ORDER BY lower(COALESCE(email, username))`);
-  return rows;
+const USERS_ORDER = {
+  user: 'lower(COALESCE(email, username))',
+  name: 'lower(full_name)',
+  authSource: 'auth_source::text',
+  status: 'is_active',
+};
+export const USER_SORTS = Object.keys(USERS_ORDER);
+
+/** Usuarios paginados (público, sin secretos). Búsqueda: email, usuario y nombre. */
+export async function listUsers({ limit, offset, q, sort, dir, filters = {} }) {
+  const where = new SqlWhere()
+    .search(['email', 'username', 'full_name'], q)
+    .eq('auth_source::text', filters.authSource);
+  if (filters.active !== undefined) where.add(`is_active = ${where.param(filters.active)}`);
+  if (filters.role) {
+    where.add(`EXISTS (SELECT 1 FROM app_user_roles ur JOIN app_roles r ON r.id = ur.role_id
+                WHERE ur.user_id = app_users.id AND r.key = ${where.param(filters.role)})`);
+  }
+  return pagedQuery(query, {
+    select: `SELECT ${PUBLIC_COLS} FROM app_users`,
+    countFrom: 'app_users',
+    where,
+    order: orderBy(USERS_ORDER, sort, dir, { sort: 'user', dir: 'asc' }, 'id'),
+    limit,
+    offset,
+  });
 }
 
 /** Crea un usuario local (sin roles: se asignan aparte). Lanza (23505) si el email ya existe. */

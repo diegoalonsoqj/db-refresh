@@ -3,12 +3,16 @@ import { api } from '../api/client.js';
 import { useList } from '../hooks/useList.js';
 import { useAuth } from '../auth/AuthContext.jsx';
 import { FormModal, IconButton, NewButton, PageHead } from '../components/ui.jsx';
+import { EmptyRow, FilterSelect, ListToolbar, Pagination, SortTh } from '../components/list.jsx';
+import { useListParams } from '../hooks/useListParams.js';
 import { IconDelete, IconKey } from '../components/icons.jsx';
 import { useConfirm } from '../components/ConfirmDialog.jsx';
 import { useToast } from '../components/Toast.jsx';
 
 // Roles base del RBAC (la gestión completa de roles llega con la pantalla de Roles y Permisos).
 const ROLES = ['superadmin', 'admin', 'operator', 'viewer'];
+const AUTH_OPTIONS = [{ value: 'local', label: 'Local' }, { value: 'ad', label: 'AD' }];
+const STATUS_OPTIONS = [{ value: 'true', label: 'Activos' }, { value: 'false', label: 'Inactivos' }];
 const empty = { authSource: 'local', email: '', username: '', fullName: '', role: 'viewer', password: '' };
 
 export default function UsersPage() {
@@ -16,7 +20,14 @@ export default function UsersPage() {
   const toast = useToast();
   const { user: me, has } = useAuth();
   const canWrite = has('users:write');
-  const { data: users, error, reload } = useList('/users');
+  const list = useListParams({ filters: ['role', 'authSource', 'active'], defaultSort: { key: 'user', dir: 'asc' } });
+  const { data, error, reload } = useList(`/users?${list.apiQuery}`);
+  const users = data?.items;
+  // Sin permiso para leer roles, el filtro ofrece los de sistema.
+  const { data: roleList } = useList(has('roles:read') ? '/roles' : null);
+  const roleOptions = roleList
+    ? roleList.map((r) => ({ value: r.key, label: r.name }))
+    : ROLES.map((r) => ({ value: r, label: r }));
   const { data: ad } = useList('/settings/ad');
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState(empty);
@@ -63,18 +74,39 @@ export default function UsersPage() {
     catch (err) { toast.error(err.message); }
   };
 
-  if (error) return <div className="alert error">{error}</div>;
-  if (!users) return <div className="muted">Cargando…</div>;
-
   return (
     <div className="page-fill">
-      <PageHead info={`${users.length} usuario(s)`}>
+      <PageHead info={data ? `${data.total} usuario(s)` : null}>
         {canWrite && <NewButton onClick={() => { setForm(empty); setCreating(true); setFormErr(null); }}>Nuevo usuario</NewButton>}
       </PageHead>
+      <ListToolbar
+        search={list.q}
+        onSearch={(q) => list.update({ q })}
+        searchPlaceholder="Usuario, email o nombre"
+        hasFilters={list.hasFilters}
+        onClear={list.clear}
+      >
+        <FilterSelect label="Rol" value={list.filters.role} onChange={(role) => list.update({ role })} options={roleOptions} />
+        <FilterSelect label="Tipo" value={list.filters.authSource} onChange={(authSource) => list.update({ authSource })} options={AUTH_OPTIONS} />
+        <FilterSelect label="Estado" value={list.filters.active} onChange={(active) => list.update({ active })} options={STATUS_OPTIONS} />
+      </ListToolbar>
+      {error && <div className="alert error">{error}</div>}
+      {!users ? <div className="muted">Cargando…</div> : (
+      <>
       <div className="table-wrap">
       <table className="table">
-        <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Tipo</th><th>Activo</th><th /></tr></thead>
+        <thead>
+          <tr>
+            <SortTh sortKey="user" {...list.sortProps}>Usuario</SortTh>
+            <SortTh sortKey="name" {...list.sortProps}>Nombre</SortTh>
+            <th>Rol</th>
+            <SortTh sortKey="authSource" {...list.sortProps}>Tipo</SortTh>
+            <SortTh sortKey="status" {...list.sortProps}>Activo</SortTh>
+            <th>Acciones</th>
+          </tr>
+        </thead>
         <tbody>
+          {users.length === 0 && <EmptyRow colSpan={6} filtered={list.hasFilters} />}
           {users.map((u) => (
             <tr key={u.id}>
               <td className="mono small">
@@ -106,6 +138,9 @@ export default function UsersPage() {
         </tbody>
       </table>
       </div>
+      <Pagination total={data.total} limit={list.limit} offset={list.offset} onChange={list.setPage} />
+      </>
+      )}
 
       {creating && (
         <FormModal title="Nuevo usuario" onClose={() => setCreating(false)} onSubmit={create} busy={busy} error={formErr} submitLabel="Crear">

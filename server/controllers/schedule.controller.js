@@ -9,7 +9,7 @@ const wrap = (fn) => async (req, res, next) => {
   }
 };
 
-export const listSchedules = wrap(async (_req, res) => res.json(await schedule.listSchedules()));
+export const listSchedules = wrap(async (req, res) => res.json(await schedule.listSchedules(req.query)));
 export const getSchedule = wrap(async (req, res) => res.json(await schedule.getSchedule(req.params.id)));
 export const createSchedule = wrap(async (req, res) =>
   res.status(201).json(await schedule.createSchedule(req.body, req.user?.id ?? null)));

@@ -7,6 +7,8 @@ import { ConflictError, NotFoundError, ValidationError } from '../domain/errors.
 import { defaultMethod, validateMapping } from '../domain/restoreMapping.js';
 import { missingSqlCredentials } from '../domain/instance.js';
 import { getUserById } from '../data/repositories/users.repo.js';
+import { parseListQuery } from '../lib/listQuery.js';
+import { ENGINES } from '../domain/credential.js';
 
 /**
  * Crea (encola) un job de restauración.
@@ -59,8 +61,14 @@ export async function launchRestore(req) {
   return job;
 }
 
-export function listJobs() {
-  return jobsRepo.listJobs();
+const JOB_STATUS_FILTER = ['pending', 'running', 'succeeded', 'warned', 'failed', 'cancelled'];
+
+/** Historial paginado con búsqueda, filtros y orden (query string de la API). */
+export function listJobs(rawQuery) {
+  return jobsRepo.listJobs(parseListQuery(rawQuery, {
+    sorts: jobsRepo.JOB_SORTS,
+    filters: { status: JOB_STATUS_FILTER, engine: ENGINES, method: ['import', 'native'], from: 'date', to: 'date' },
+  }));
 }
 
 export function getJob(jobId) {

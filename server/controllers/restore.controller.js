@@ -40,10 +40,9 @@ export async function launchRestore(req, res, next) {
   }
 }
 
-export async function listJobs(_req, res, next) {
+export async function listJobs(req, res, next) {
   try {
-    const jobs = await restoreService.listJobs();
-    res.json({ jobs });
+    res.json(await restoreService.listJobs(req.query));
   } catch (err) {
     next(err);
   }

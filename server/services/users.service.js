@@ -8,6 +8,7 @@ import { hashPassword } from '../auth/strategies/local.js';
 import { mapPgError } from '../data/pgErrors.js';
 import { NotFoundError, ValidationError, AuthError } from '../domain/errors.js';
 import { assertNonEmpty, assertOneOf } from '../lib/validation.js';
+import { parseListQuery } from '../lib/listQuery.js';
 import { AD_USERNAME_RE, normalizeAdUsername } from '../auth/ldap.js';
 import { SUPERADMIN, uniqueKeys, unknownKeys } from '../domain/permissions.js';
 
@@ -44,7 +45,11 @@ function assertPassword(pw) {
   return pw;
 }
 
-export const listUsers = () => repo.listUsers();
+/** Usuarios paginados con búsqueda, filtros (rol, tipo, estado) y orden. */
+export const listUsers = (rawQuery) => repo.listUsers(parseListQuery(rawQuery, {
+  sorts: repo.USER_SORTS,
+  filters: { role: 'text', authSource: ['local', 'ad'], active: 'bool' },
+}));
 
 const SOURCES = ['local', 'ad'];
 

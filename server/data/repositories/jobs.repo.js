@@ -1,6 +1,7 @@
 // Repositorio de jobs de restauración: jobs, items y eventos.
 // El worker consume estos jobs con FOR UPDATE SKIP LOCKED.
 import { query, withTransaction } from '../pool.js';
+import { SqlWhere, orderBy, pagedQuery } from '../../lib/listQuery.js';
 
 /**
  * Crea un job y sus items en una sola transacción.
@@ -159,19 +160,47 @@ export async function isCancelRequested(jobId) {
 }
 
 /** Lista los jobs recientes (para el historial), con instancia/proyecto. */
-export async function listJobs({ limit = 50 } = {}) {
-  const { rows } = await query(
-    `SELECT j.id, j.engine, j.status, j.bucket_path, j.error_message, j.warning_message, j.cancel_requested_at,
-            j.created_at, j.started_at, j.finished_at,
-            i.instance_name, p.project_id
-       FROM restore_jobs j
+const JOBS_FROM = `restore_jobs j
        JOIN gcp_instances i ON i.id = j.instance_ref
        JOIN gcp_projects  p ON p.id = i.project_ref
-      ORDER BY j.created_at DESC
-      LIMIT $1`,
-    [limit],
-  );
-  return rows;
+       LEFT JOIN app_users u ON u.id = j.requested_by`;
+
+const JOBS_ORDER = {
+  created: 'j.created_at',
+  status: 'j.status::text',
+  instance: 'lower(i.instance_name)',
+  engine: 'j.engine::text',
+  requestedBy: 'lower(COALESCE(u.full_name, u.email, u.username))',
+  duration: 'j.finished_at - j.started_at',
+};
+export const JOB_SORTS = Object.keys(JOBS_ORDER);
+
+/**
+ * Historial paginado. `status` admite además 'warned' (OK con avisos); 'succeeded'
+ * son los OK sin avisos (como el badge). Búsqueda: instancia, proyecto y carpeta.
+ */
+export async function listJobs({ limit, offset, q, sort, dir, filters = {} }) {
+  const where = new SqlWhere()
+    .search(['i.instance_name', 'p.project_id', 'j.bucket_path'], q)
+    .eq('j.engine::text', filters.engine)
+    .eq('j.method', filters.method)
+    .dateRange('j.created_at', filters.from, filters.to);
+  if (filters.status === 'warned') where.add(`j.status = 'succeeded' AND j.warning_message IS NOT NULL`);
+  else if (filters.status === 'succeeded') where.add(`j.status = 'succeeded' AND j.warning_message IS NULL`);
+  else where.eq('j.status::text', filters.status);
+
+  return pagedQuery(query, {
+    select: `SELECT j.id, j.engine, j.method, j.status, j.bucket_path, j.error_message, j.warning_message,
+                    j.cancel_requested_at, j.created_at, j.started_at, j.finished_at,
+                    i.instance_name, p.project_id,
+                    COALESCE(u.full_name, u.email, u.username) AS requested_by_name
+               FROM ${JOBS_FROM}`,
+    countFrom: JOBS_FROM,
+    where,
+    order: orderBy(JOBS_ORDER, sort, dir, { sort: 'created', dir: 'desc' }, 'j.id'),
+    limit,
+    offset,
+  });
 }
 
 export async function getJobItems(jobId) {

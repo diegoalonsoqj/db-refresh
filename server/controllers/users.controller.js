@@ -1,12 +1,13 @@
 // Controladores thin de gestión de usuarios (admin) + auditoría.
 import * as users from '../services/users.service.js';
-import { listAudit } from '../data/repositories/audit.repo.js';
+import { AUDIT_SORTS, listAudit } from '../data/repositories/audit.repo.js';
+import { parseListQuery } from '../lib/listQuery.js';
 
 const wrap = (fn) => async (req, res, next) => {
   try { await fn(req, res); } catch (err) { next(err); }
 };
 
-export const list = wrap(async (_req, res) => res.json(await users.listUsers()));
+export const list = wrap(async (req, res) => res.json(await users.listUsers(req.query)));
 export const create = wrap(async (req, res) => res.status(201).json(await users.createUser(req.body)));
 export const update = wrap(async (req, res) => res.json(await users.updateUser(req.params.id, req.body, req.user?.id)));
 export const resetPassword = wrap(async (req, res) => {
@@ -19,4 +20,7 @@ export const remove = wrap(async (req, res) => {
 });
 
 // GET /api/audit (admin)
-export const audit = wrap(async (_req, res) => res.json({ entries: await listAudit({ limit: 200 }) }));
+export const audit = wrap(async (req, res) => res.json(await listAudit(parseListQuery(req.query, {
+  sorts: AUDIT_SORTS,
+  filters: { action: 'text', entity: 'text', user: 'text', from: 'date', to: 'date' },
+}))));

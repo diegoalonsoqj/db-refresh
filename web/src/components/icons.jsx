@@ -2,7 +2,7 @@
 // del texto (currentColor). Se envuelven con nombres propios para que las
 // pantallas no dependan directamente de la librería.
 import {
-  Activity, ArrowLeft, ArrowUp, CalendarClock, CircleCheck, CircleX, Eye, LayoutDashboard, ChevronDown, ChevronLeft, CirclePlay, Database,
+  Activity, ArrowLeft, ArrowUp, CalendarClock, CalendarDays, CircleCheck, CircleX, Eye, LayoutDashboard, ChevronDown, ChevronLeft, CirclePlay, Database,
   FileCode2, Folder, History, KeyRound, Link2, Lock, LogOut, Moon, Pencil, Play, PlugZap, Plus,
   RefreshCw, ScrollText, Server, Settings, Star, Sun, Trash2, TriangleAlert, Unlink, User, Users, X,
 } from 'lucide-react';
@@ -47,6 +47,7 @@ export const IconLink = icon(Link2);
 export const IconUnlink = icon(Unlink);
 export const IconScript = icon(FileCode2);
 export const IconStar = icon(Star);
+export const IconCalendar = icon(CalendarDays);
 
 // Logo de la app (mismo dibujo que public/favicon.svg): BD + flecha de refresco
 // sobre un cuadrado con el color primario.

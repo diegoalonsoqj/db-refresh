@@ -600,7 +600,12 @@ test('tareas de restore: CRUD, programación (una vez / recurrente / sin), reser
     assert.equal(none.data.next_run_at, null);
 
     // Lectura: cualquier autenticado; borrar: operator/admin.
-    assert.ok((await req('GET', '/schedules', { cookie: viewer.cookie })).data.some((s) => s.id === ids.task));
+    assert.ok((await req('GET', '/schedules', { cookie: viewer.cookie })).data.items.some((s) => s.id === ids.task));
+    // Listado paginado: búsqueda, filtro de programación y orden.
+    const found = await req('GET', '/schedules?q=itest%20tarea&schedule=none&sort=next&dir=desc', { cookie });
+    assert.equal(found.status, 200);
+    assert.ok(found.data.items.some((s) => s.id === ids.task));
+    assert.equal((await req('GET', '/schedules?q=itest%20tarea&schedule=recurring', { cookie })).data.items.some((s) => s.id === ids.task), false);
     assert.equal((await req('DELETE', `/schedules/${ids.task}`, { cookie: viewer.cookie })).status, 403);
     assert.equal((await req('DELETE', `/schedules/${ids.task}`, { cookie })).status, 204);
     ids.task = null;
@@ -789,5 +794,36 @@ test('MongoDB: instancia con conexión obligatoria (Community / Atlas SRV), sin 
     if (ids.bucket) await req('DELETE', `/buckets/${ids.bucket}`, { cookie });
     for (const c of [ids.cred, ids.pgCred]) if (c) await req('DELETE', `/credentials/${c}`, { cookie });
     await req('DELETE', `/projects/${proj.data.id}`, { cookie });
+  }
+});
+
+test('listados paginados (como db-keeper): {items,total}, búsqueda, filtros, orden y validación 422', async (t) => {
+  if (!dbOk) return t.skip('BD no disponible');
+  const { cookie } = await login(ADMIN, PW);
+
+  // Usuarios: búsqueda + filtro de rol/estado; limit/offset.
+  const users = await req('GET', '/users?q=itest-&role=viewer&active=true', { cookie });
+  assert.equal(users.status, 200);
+  assert.ok(users.data.items.some((u) => u.email === VIEWER));
+  assert.ok(!users.data.items.some((u) => u.email === ADMIN));
+  const page1 = await req('GET', '/users?q=itest-&limit=1&sort=user', { cookie });
+  const page2 = await req('GET', '/users?q=itest-&limit=1&offset=1&sort=user', { cookie });
+  assert.equal(page1.data.items.length, 1);
+  assert.ok(page1.data.total >= 2);
+  assert.notEqual(page1.data.items[0].id, page2.data.items[0].id);
+  assert.equal((await req('GET', '/users?authSource=ad&q=itest-admin', { cookie })).data.total, 0);
+
+  // Historial y auditoría: forma {items,total}; filtros de estado y fechas.
+  const jobs = await req('GET', '/restores?status=warned&sort=duration&dir=desc', { cookie });
+  assert.equal(jobs.status, 200);
+  assert.ok(Array.isArray(jobs.data.items) && typeof jobs.data.total === 'number');
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const audit = await req('GET', `/audit?action=login&user=itest-admin&from=${today.toISOString()}&to=${today.toISOString()}`, { cookie });
+  assert.equal(audit.status, 200);
+  assert.ok(audit.data.items.length > 0 && audit.data.items.every((e) => e.action.includes('login')));
+
+  // Parámetros inválidos: 422 (nunca llegan al SQL).
+  for (const path of ['/users?sort=password_hash', '/restores?limit=1000', '/restores?status=ok', '/audit?from=ayer', '/users?active=si']) {
+    assert.equal((await req('GET', path, { cookie })).status, 422, path);
   }
 });

@@ -14,6 +14,8 @@ import { NotFoundError, ValidationError } from '../domain/errors.js';
 import { missingSqlCredentials } from '../domain/instance.js';
 import { buildSchedule, resolveTaskMapping, validateTaskMapping } from '../domain/restoreTask.js';
 import { defaultMethod } from '../domain/restoreMapping.js';
+import { ENGINES } from '../domain/credential.js';
+import { parseListQuery } from '../lib/listQuery.js';
 
 /** Carpeta base del bucket como gs:// URI. */
 export function bucketBasePath(bucket) {
@@ -67,7 +69,11 @@ async function validateInput(input) {
   };
 }
 
-export const listSchedules = () => repo.listSchedules();
+/** Tareas paginadas con búsqueda, filtros (motor, tipo de programación) y orden. */
+export const listSchedules = (rawQuery) => repo.listSchedules(parseListQuery(rawQuery, {
+  sorts: repo.SCHEDULE_SORTS,
+  filters: { engine: ENGINES, schedule: ['none', 'once', 'recurring'] },
+}));
 
 export async function getSchedule(id) {
   const s = await repo.getById(id);
